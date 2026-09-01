@@ -1,0 +1,1528 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// enum UserRole removed
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  ONLINE_WALLET
+  UPI
+  OTHER
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  MULTIPLE_SELECT
+  DROPDOWN
+  TRUE_FALSE
+  FILL_IN_BLANK
+  SHORT_ANSWER
+  ESSAY
+  MATCHING
+  ORDERING
+  IMAGE
+  AUDIO
+  CODING
+}
+
+enum ReactionType {
+  LIKE
+  LOVE
+  LAUGH
+  WOW
+  SAD
+  ANGRY
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum NotificationType {
+  SYSTEM
+  ATTENDANCE
+  FEE
+  EXAM
+  MESSAGE
+  COMMENT
+  REMINDER
+  ANNOUNCEMENT
+}
+
+enum TemplateType {
+  EMAIL
+  SMS
+  IN_APP
+  PUSH
+}
+
+enum ReportType {
+  ATTENDANCE
+  REVENUE
+  STUDENT_PERFORMANCE
+  TEACHER_PERFORMANCE
+  COURSE_ANALYTICS
+  EXAM_ANALYTICS
+  FEE_COLLECTION
+  COMPLETION
+  CUSTOM
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  supabaseUserId  String    @unique
+  passwordHash    String
+  firstName       String
+  lastName        String
+  phone           String?
+  avatarUrl       String?
+  emailVerified   Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?   @map("created_by")
+  updatedBy       String?   @map("updated_by")
+
+  // Relations
+
+  userRoles          UserRole[]
+  sessions           Session[]
+  auditLogs          AuditLog[]
+  student            Student?
+  teacher            Teacher?
+  guardian           Guardian[]
+  emergencyContact   EmergencyContact[]
+  academicHistory    AcademicHistory[]
+  enrollments        Enrollment[]
+  studentProgress    StudentProgress[]
+  teacherAssignments TeacherAssignment[]
+
+  attendanceRecords AttendanceRecord[]
+  attendanceAudits  AttendanceAudit[]
+
+  notifications Notification[]
+
+  searchQueryLogs SearchQueryLog[]
+
+  // Auto-added to fix validation
+  receipt_issuedByUser           Receipt[]
+  verificationLog_verifiedByUser VerificationLog[]
+  message_sender                 Message[]         @relation("MessageSentByUser")
+  message_recipient              Message[]         @relation("MessageReceivedByUser")
+
+  @@index([email])
+  @@index([deletedAt])
+}
+
+model Role {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@index([name])
+}
+
+model Permission {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  resource    String // e.g., "students", "courses", "exams"
+  action      String // e.g., "read", "create", "update", "delete"
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  rolePermissions RolePermission[]
+
+  @@index([resource, action])
+}
+
+model UserRole {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  roleId     String    @map("role_id")
+  assignedAt DateTime  @default(now())
+  assignedBy String?   @map("assigned_by")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  id           String    @id @default(uuid())
+  roleId       String    @map("role_id")
+  permissionId String    @map("permission_id")
+  grantedAt    DateTime  @default(now())
+  grantedBy    String?   @map("granted_by")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  // Relations
+  role       Role       @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model Session {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id") // Who performed the action
+  action    String // e.g., "CREATE", "UPDATE", "DELETE"
+  tableName String // Name of the table affected
+  recordId  String // ID of the record affected
+  changes   Json // Before/after changes
+  createdAt DateTime @default(now())
+  createdBy String?  @map("created_by") // Who initiated the action (could be system)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([tableName, recordId])
+  @@index([createdAt])
+}
+
+// Academic Structure
+model Department {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  code        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   String?   @map("created_by")
+  updatedBy   String?   @map("updated_by")
+
+  // Relations
+  batches  Batch[]
+  students Student[]
+  courses  Course[]
+
+  @@index([name])
+  @@index([code])
+  @@index([deletedAt])
+}
+
+model Batch {
+  id           String    @id @default(uuid())
+  name         String    @unique
+  code         String    @unique
+  departmentId String    @map("department_id")
+  startDate    DateTime
+  endDate      DateTime
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  createdBy    String?   @map("created_by")
+  updatedBy    String?   @map("updated_by")
+
+  // Relations
+  department         Department          @relation(fields: [departmentId], references: [id])
+  students           Student[]
+  enrollments        Enrollment[]
+  teacherAssignments TeacherAssignment[]
+  attendanceRecords  AttendanceRecord[]
+  invoices           Invoice[]
+
+  // Auto-added to fix validation
+  feeStructure_batch FeeStructure[]
+
+  @@index([name])
+  @@index([code])
+  @@index([departmentId])
+  @@index([deletedAt])
+}
+
+model CourseCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  courses Course[]
+
+  @@index([name])
+}
+
+model Course {
+  id               String    @id @default(uuid())
+  title            String
+  code             String    @unique
+  description      String?
+  categoryId       String    @map("category_id")
+  departmentId     String?   @map("department_id")
+  credits          Decimal   @default(0)
+  durationWeeks    Int
+  difficultyLevel  String
+  prerequisites    String?
+  learningOutcomes String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  createdBy        String?   @map("created_by")
+  updatedBy        String?   @map("updated_by")
+
+  // Relations
+  category     CourseCategory @relation(fields: [categoryId], references: [id])
+  department   Department?    @relation(fields: [departmentId], references: [id]) // Optional denormalization for queries
+  modules      Module[]
+  exams        Exam[]
+  invoices     Invoice[]
+  certificates Certificate[]
+  enrollments  Enrollment[]
+
+  // Auto-added to fix validation
+  teacherAssignment_course TeacherAssignment[]
+  attendanceRecord_course  AttendanceRecord[]
+  feeStructure_course      FeeStructure[]
+  discussionTopic_course   DiscussionTopic[]
+
+  @@index([title])
+  @@index([code])
+  @@index([categoryId])
+  @@index([deletedAt])
+}
+
+model Module {
+  id             String    @id @default(uuid())
+  title          String
+  description    String?
+  courseId       String    @map("course_id")
+  sequenceNumber Int
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  // Relations
+  course             Course              @relation(fields: [courseId], references: [id])
+  lessons            Lesson[]
+  teacherAssignments TeacherAssignment[]
+
+  // Auto-added to fix validation
+  attendanceRecord_module AttendanceRecord[]
+
+  @@index([courseId, sequenceNumber])
+  @@index([deletedAt])
+}
+
+model Lesson {
+  id              String    @id @default(uuid())
+  title           String
+  description     String?
+  moduleId        String    @map("module_id")
+  lessonType      String // e.g., "video", "text", "live"
+  sequenceNumber  Int
+  durationMinutes Int?
+  videoUrl        String?
+  notesUrl        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?   @map("created_by")
+  updatedBy       String?   @map("updated_by")
+
+  // Relations
+  module           Module            @relation(fields: [moduleId], references: [id])
+  resources        Resource[]
+  assignments      Assignment[]
+  studentProgress  StudentProgress[]
+  discussionTopics DiscussionTopic[]
+
+  @@index([moduleId, sequenceNumber])
+  @@index([deletedAt])
+}
+
+model Resource {
+  id           String    @id @default(uuid())
+  title        String
+  description  String?
+  lessonId     String    @map("lesson_id")
+  resourceType String // e.g., "pdf", "video", "slide", "link"
+  fileUrl      String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  createdBy    String?   @map("created_by")
+  updatedBy    String?   @map("updated_by")
+
+  // Relations
+  lesson Lesson @relation(fields: [lessonId], references: [id])
+
+  @@index([lessonId])
+  @@index([deletedAt])
+}
+
+model Assignment {
+  id             String    @id @default(uuid())
+  title          String
+  description    String?
+  lessonId       String    @map("lesson_id")
+  assignmentType String // e.g., "homework", "project", "quiz"
+  dueDate        DateTime?
+  maxPoints      Decimal   @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  // Relations
+  lesson Lesson @relation(fields: [lessonId], references: [id])
+
+  @@index([lessonId])
+  @@index([deletedAt])
+}
+
+// Student Management
+model Student {
+  id                    String    @id @default(uuid())
+  userId                String    @unique @map("user_id")
+  studentId             String    @unique // Official student ID (e.g., STU00123)
+  dateOfBirth           DateTime?
+  gender                String?
+  nicOrPassport         String?   // NIC or Passport number for ID card
+  photoUrl              String?   // Optional dedicated ID-card photo
+  uniqueId              String?   @unique // e.g. "STU-A1B2C3" for QR
+  qrCodeVersion         Int       @default(1)
+  idCardIssuedAt        DateTime?
+  addressLine1          String?
+  addressLine2          String?
+  city                  String?
+  state                 String?
+  postalCode            String?
+  country               String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  dateOfAdmission       DateTime?
+  batchId               String    @map("batch_id")
+  departmentId          String    @map("department_id")
+  isActive              Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
+  createdBy             String?   @map("created_by")
+  updatedBy             String?   @map("updated_by")
+
+  // Relations
+  user              User               @relation(fields: [userId], references: [id])
+  batch             Batch              @relation(fields: [batchId], references: [id])
+  department        Department         @relation(fields: [departmentId], references: [id])
+  guardian          Guardian?
+  emergencyContact  EmergencyContact?
+  academicHistory   AcademicHistory[]
+  enrollments       Enrollment[]
+  studentProgress   StudentProgress[]
+  attendanceRecords AttendanceRecord[]
+  invoices          Invoice[]
+  paymentHistory    Payment[] // Denormalized for quick access
+  certificates      Certificate[]
+
+  // Auto-added to fix validation
+  examAttempt_student        ExamAttempt[]
+  discussionTopic_student    DiscussionTopic[]
+  discussionReply_student    DiscussionReply[]
+  discussionReaction_student DiscussionReaction[]
+
+  @@index([studentId])
+  @@index([batchId])
+  @@index([departmentId])
+  @@index([deletedAt])
+}
+
+model Guardian {
+  id             String    @id @default(uuid())
+  studentId      String    @unique @map("student_id")
+  feeStructureId String?   @map("fee_structure_id")
+  firstName      String
+  lastName       String
+  relationship   String
+  phone          String
+  email          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id])
+
+  // Auto-added to fix validation
+  user_guardian User[]
+
+  @@index([studentId])
+}
+
+model EmergencyContact {
+  id           String    @id @default(uuid())
+  studentId    String    @unique @map("student_id")
+  firstName    String
+  lastName     String
+  relationship String
+  phone        String
+  email        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id])
+
+  // Auto-added to fix validation
+  user_emergencyContact User[]
+
+  @@index([studentId])
+}
+
+model AcademicHistory {
+  id              String    @id @default(uuid())
+  studentId       String    @map("student_id")
+  institutionName String
+  programName     String?
+  startDate       DateTime?
+  endDate         DateTime?
+  degreeEarned    String?
+  transcriptUrl   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id])
+
+  // Auto-added to fix validation
+  user_academicHistory User[]
+
+  @@index([studentId])
+}
+
+model Enrollment {
+  id                 String    @id @default(uuid())
+  studentId          String    @map("student_id")
+  courseId           String    @map("course_id")
+  batchId            String    @map("batch_id")
+  enrollmentDate     DateTime  @default(now())
+  expectedCompletion DateTime?
+  status             String // e.g., "active", "completed", "dropped", "paused"
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+  createdBy          String?   @map("created_by")
+  updatedBy          String?   @map("updated_by")
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id])
+  course  Course  @relation(fields: [courseId], references: [id])
+  batch   Batch   @relation(fields: [batchId], references: [id])
+
+  // Auto-added to fix validation
+  user_enrollments User[]
+
+  @@unique([studentId, courseId])
+  @@index([studentId])
+  @@index([courseId])
+  @@index([batchId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model StudentProgress {
+  id          String    @id @default(uuid())
+  studentId   String    @map("student_id")
+  lessonId    String    @map("lesson_id")
+  status      String // e.g., "not_started", "in_progress", "completed"
+  score       Decimal? // For graded lessons
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id])
+  lesson  Lesson  @relation(fields: [lessonId], references: [id])
+
+  // Auto-added to fix validation
+  user_studentProgress User[]
+
+  @@unique([studentId, lessonId])
+  @@index([studentId])
+  @@index([lessonId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// Teacher Management
+model Teacher {
+  id             String    @id @default(uuid())
+  userId         String    @unique @map("user_id")
+  employeeId     String    @unique // Official employee ID
+  specialization String?
+  dateOfJoining  DateTime?
+  salary         Decimal?
+  dateOfBirth    DateTime?
+  nicOrPassport  String?   // NIC or Passport number for ID card
+  photoUrl       String?   // Dedicated ID-card photo
+  uniqueId       String?   @unique // e.g. "TCH-A1B2C3" for QR
+  qrCodeVersion  Int       @default(1)
+  idCardIssuedAt DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  // Relations
+  user               User                @relation(fields: [userId], references: [id])
+  teacherAssignments TeacherAssignment[]
+  performanceReports PerformanceReport[]
+
+  @@index([employeeId])
+  @@index([deletedAt])
+}
+
+model TeacherAssignment {
+  id             String    @id @default(uuid())
+  teacherId      String    @map("teacher_id")
+  courseId       String    @map("course_id")
+  batchId        String    @map("batch_id")
+  moduleId       String?   @map("module_id")
+  assignmentType String // e.g., "teaching", "grading", "attendance"
+  assignedAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  // Relations
+  teacher Teacher @relation(fields: [teacherId], references: [id])
+  course  Course  @relation(fields: [courseId], references: [id])
+  batch   Batch   @relation(fields: [batchId], references: [id])
+  module  Module? @relation(fields: [moduleId], references: [id])
+
+  // Auto-added to fix validation
+  user_teacherAssignments User[]
+
+  @@index([teacherId])
+  @@index([courseId])
+  @@index([batchId])
+  @@index([moduleId])
+  @@index([deletedAt])
+}
+
+model PerformanceReport {
+  id                    String    @id @default(uuid())
+  teacherId             String    @map("teacher_id")
+  reportPeriod          String // e.g., "2024-Q1", "2024-Spring"
+  teachingEffectiveness Decimal   @default(0) // 0-5 scale
+  studentFeedback       Decimal   @default(0) // 0-5 scale
+  peerReview            Decimal   @default(0) // 0-5 scale
+  overallScore          Decimal   @default(0) // 0-5 scale
+  feedback              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
+  createdBy             String?   @map("created_by")
+  updatedBy             String?   @map("updated_by")
+
+  // Relations
+  teacher Teacher @relation(fields: [teacherId], references: [id])
+
+  @@index([teacherId])
+  @@index([reportPeriod])
+  @@index([deletedAt])
+}
+
+// Attendance Management
+model AttendanceRecord {
+  id             String           @id @default(uuid())
+  studentId      String           @map("student_id")
+  courseId       String           @map("course_id")
+  batchId        String           @map("batch_id")
+  moduleId       String?          @map("module_id")
+  classDate      DateTime // Actual date of the class
+  attendanceDate DateTime         @default(now()) // Date when attendance was recorded
+  status         AttendanceStatus
+  remarks        String?
+  createdBy      String?          @map("created_by")
+  updatedBy      String?          @map("updated_by")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+
+  // Relations
+  student    Student           @relation(fields: [studentId], references: [id])
+  course     Course            @relation(fields: [courseId], references: [id])
+  batch      Batch             @relation(fields: [batchId], references: [id])
+  module     Module?           @relation(fields: [moduleId], references: [id])
+  auditTrail AttendanceAudit[]
+
+  // Auto-added to fix validation
+  user_attendanceRecords User[]
+
+  @@index([studentId])
+  @@index([courseId])
+  @@index([batchId])
+  @@index([moduleId])
+  @@index([classDate])
+  @@index([attendanceDate])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([courseId, batchId, classDate]) // For daily batch attendance reports
+}
+
+model AttendanceAudit {
+  id           String           @id @default(uuid())
+  attendanceId String           @map("attendance_id")
+  changedBy    String           @map("changed_by")
+  oldValue     AttendanceStatus
+  newValue     AttendanceStatus
+  reason       String?
+  changedAt    DateTime         @default(now())
+
+  // Relations
+  attendance    AttendanceRecord @relation(fields: [attendanceId], references: [id])
+  changedByUser User             @relation(fields: [changedBy], references: [id])
+
+  @@index([attendanceId])
+  @@index([changedAt])
+}
+
+// Fee Management
+model FeeStructure {
+  id              String    @id @default(uuid())
+  name            String
+  description     String?
+  courseId        String?   @map("course_id")
+  batchId         String?   @map("batch_id")
+  amountPerClass  Decimal   @default(0)
+  classesRequired Int       @default(0)
+  isActive        Boolean   @default(true)
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?   @map("created_by")
+  updatedBy       String?   @map("updated_by")
+
+  // Relations
+  course   Course?   @relation(fields: [courseId], references: [id])
+  batch    Batch?    @relation(fields: [batchId], references: [id])
+  invoices Invoice[]
+
+  @@index([courseId])
+  @@index([batchId])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+model Invoice {
+  id             String        @id @default(uuid())
+  invoiceNumber  String        @unique
+  studentId      String        @map("student_id")
+  feeStructureId String?       @map("fee_structure_id")
+  amount         Decimal       @default(0)
+  taxAmount      Decimal       @default(0)
+  totalAmount    Decimal       @default(0)
+  status         PaymentStatus
+  dueDate        DateTime?
+  paidDate       DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  createdBy      String?       @map("created_by")
+  updatedBy      String?       @map("updated_by")
+
+  // Relations
+  student      Student       @relation(fields: [studentId], references: [id])
+  feeStructure FeeStructure? @relation(fields: [feeStructureId], references: [id])
+  invoiceItems InvoiceItem[]
+  payments     Payment[]
+  receipts     Receipt[]
+  feeReminders FeeReminder[]
+
+  // Auto-added to fix validation
+  batch_invoices    Batch[]
+  course_invoices   Course[]
+  discount_invoices Discount[]
+
+  @@index([studentId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([deletedAt])
+  @@index([invoiceNumber])
+}
+
+model InvoiceItem {
+  id          String    @id @default(uuid())
+  invoiceId   String    @map("invoice_id")
+  studentId   String?   @map("student_id")
+  description String
+  quantity    Decimal   @default(1)
+  unitPrice   Decimal   @default(0)
+  totalPrice  Decimal   @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  paymentNumber String        @unique
+  invoiceId     String        @map("invoice_id")
+  studentId     String?       @map("student_id")
+  amount        Decimal       @default(0)
+  taxAmount     Decimal       @default(0)
+  method        PaymentMethod
+  transactionId String?       @unique
+  status        PaymentStatus
+  paymentDate   DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+  createdBy     String?       @map("created_by")
+  updatedBy     String?       @map("updated_by")
+
+  // Relations
+  invoice Invoice  @relation(fields: [invoiceId], references: [id])
+  student Student? @relation(fields: [studentId], references: [id])
+
+  // Auto-added to fix validation
+  receipt_payment Receipt[]
+
+  @@index([invoiceId])
+  @@index([status])
+  @@index([paymentDate])
+  @@index([deletedAt])
+  @@index([paymentNumber])
+}
+
+model Receipt {
+  id            String    @id @default(uuid())
+  receiptNumber String    @unique
+  paymentId     String    @map("payment_id")
+  issuedAt      DateTime  @default(now())
+  issuedBy      String    @map("issued_by")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  // Relations
+  payment      Payment @relation(fields: [paymentId], references: [id])
+  issuedByUser User    @relation(fields: [issuedBy], references: [id])
+
+  // Auto-added to fix validation
+  invoice_receipts Invoice[]
+
+  @@index([paymentId])
+  @@index([deletedAt])
+  @@index([receiptNumber])
+}
+
+model Discount {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  description String?
+  percentage  Decimal   @default(0) // 0-100
+  fixedAmount Decimal   @default(0)
+  validFrom   DateTime
+  validTo     DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   String?   @map("created_by")
+  updatedBy   String?   @map("updated_by")
+
+  // Relations
+  invoices Invoice[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+model FeeReminder {
+  id           String    @id @default(uuid())
+  invoiceId    String    @map("invoice_id")
+  reminderType String // e.g., "email", "sms", "push"
+  reminderDate DateTime
+  isSent       Boolean   @default(false)
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  createdBy    String?   @map("created_by")
+  updatedBy    String?   @map("updated_by")
+
+  // Relations
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+  @@index([reminderDate])
+  @@index([isSent])
+  @@index([deletedAt])
+}
+
+// Examination System
+model Question {
+  id            String       @id @default(uuid())
+  questionText  String
+  type          QuestionType
+  points        Int          @default(1)
+  explanation   String?
+  categoryId    String       @map("category_id")
+  difficulty    String // e.g., "easy", "medium", "hard"
+  tags          String? // Comma-separated tags or JSON array
+  correctAnswer String? // For objective types
+  options       Json? // For MCQ/MSQ: array of options
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+  createdBy     String?      @map("created_by")
+  updatedBy     String?      @map("updated_by")
+
+  // Relations
+  category      QuestionCategory @relation(fields: [categoryId], references: [id])
+  examQuestions ExamQuestion[]
+  responses     ExamResponse[]
+
+  // Auto-added to fix validation
+  questionTagMap_question QuestionTagMap[]
+
+  @@index([type])
+  @@index([difficulty])
+  @@index([deletedAt])
+}
+
+model QuestionCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  questions Question[]
+
+  @@index([name])
+}
+
+model QuestionTag {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  questionMaps QuestionTagMap[]
+
+  @@index([name])
+}
+
+model QuestionTagMap {
+  id         String   @id @default(uuid())
+  questionId String   @map("question_id")
+  tagId      String   @map("tag_id")
+  createdAt  DateTime @default(now())
+
+  // Relations
+  question Question    @relation(fields: [questionId], references: [id])
+  tag      QuestionTag @relation(fields: [tagId], references: [id])
+
+  @@unique([questionId, tagId])
+  @@index([questionId])
+  @@index([tagId])
+}
+
+model Exam {
+  id                 String    @id @default(uuid())
+  title              String
+  description        String?
+  courseId           String    @map("course_id")
+  startDate          DateTime?
+  endDate            DateTime?
+  durationMinutes    Int?
+  isActive           Boolean   @default(true)
+  randomizeQuestions Boolean   @default(false)
+  passingScore       Decimal   @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+  createdBy          String?   @map("created_by")
+  updatedBy          String?   @map("updated_by")
+
+  // Relations
+  course        Course         @relation(fields: [courseId], references: [id])
+  examSections  ExamSection[]
+  examQuestions ExamQuestion[]
+  attempts      ExamAttempt[]
+  results       ExamResult[]
+
+  // Auto-added to fix validation
+  certificate_exam Certificate[]
+
+  @@index([courseId])
+  @@index([isActive])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([deletedAt])
+}
+
+model ExamSection {
+  id             String    @id @default(uuid())
+  title          String
+  description    String?
+  examId         String    @map("exam_id")
+  sequenceNumber Int
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  // Relations
+  exam          Exam           @relation(fields: [examId], references: [id])
+  examQuestions ExamQuestion[]
+
+  @@index([examId])
+  @@index([sequenceNumber])
+  @@index([deletedAt])
+}
+
+model ExamQuestion {
+  id             String    @id @default(uuid())
+  examId         String    @map("exam_id")
+  sectionId      String    @map("section_id")
+  questionId     String    @map("question_id")
+  points         Int       @default(1)
+  sequenceNumber Int
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  // Relations
+  exam     Exam        @relation(fields: [examId], references: [id])
+  section  ExamSection @relation(fields: [sectionId], references: [id])
+  question Question    @relation(fields: [questionId], references: [id])
+
+  @@unique([examId, questionId])
+  @@index([examId])
+  @@index([sectionId])
+  @@index([questionId])
+  @@index([deletedAt])
+}
+
+model ExamAttempt {
+  id          String    @id @default(uuid())
+  examId      String    @map("exam_id")
+  studentId   String    @map("student_id")
+  startedAt   DateTime?
+  submittedAt DateTime?
+  score       Decimal   @default(0)
+  status      String // e.g., "started", "submitted", "graded", "reviewed"
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  exam      Exam           @relation(fields: [examId], references: [id])
+  student   Student        @relation(fields: [studentId], references: [id])
+  responses ExamResponse[]
+  result    ExamResult?
+
+  @@index([examId])
+  @@index([studentId])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([examId, studentId]) // For checking if student has attempted
+}
+
+model ExamResponse {
+  id              String    @id @default(uuid())
+  attemptId       String    @map("attempt_id")
+  questionId      String    @map("question_id")
+  answerText      String? // For subjective types
+  selectedOptions Json? // For MCQ/MSQ: array of selected option indices/values
+  pointsEarned    Decimal   @default(0)
+  isCorrect       Boolean? // null for subjective until graded
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  attempt  ExamAttempt @relation(fields: [attemptId], references: [id])
+  question Question    @relation(fields: [questionId], references: [id])
+
+  @@index([attemptId])
+  @@index([questionId])
+  @@index([deletedAt])
+}
+
+model ExamResult {
+  id            String    @id @default(uuid())
+  attemptId     String    @unique @map("attempt_id")
+  grade         String // e.g., "A", "B", "C", "Pass", "Fail"
+  certificateId String?   @map("certificate_id")
+  issuedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  // Relations
+  attempt     ExamAttempt  @relation(fields: [attemptId], references: [id])
+  certificate Certificate? @relation(fields: [certificateId], references: [id])
+
+  // Auto-added to fix validation
+  exam_results Exam[]
+
+  @@index([attemptId])
+  @@index([grade])
+  @@index([deletedAt])
+}
+
+// Discussion Board
+model DiscussionTopic {
+  id        String    @id @default(uuid())
+  title     String
+  content   String?
+  courseId  String?   @map("course_id")
+  lessonId  String?   @map("lesson_id")
+  studentId String    @map("student_id")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+
+  // Relations
+  course      Course?                @relation(fields: [courseId], references: [id])
+  lesson      Lesson?                @relation(fields: [lessonId], references: [id])
+  student     Student                @relation(fields: [studentId], references: [id])
+  replies     DiscussionReply[]
+  attachments DiscussionAttachment[]
+
+  @@index([studentId])
+  @@index([courseId])
+  @@index([lessonId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model DiscussionReply {
+  id        String    @id @default(uuid())
+  topicId   String    @map("topic_id")
+  content   String?
+  studentId String    @map("student_id")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+
+  // Relations
+  topic     DiscussionTopic      @relation(fields: [topicId], references: [id])
+  student   Student              @relation(fields: [studentId], references: [id])
+  reactions DiscussionReaction[]
+
+  @@index([topicId])
+  @@index([studentId])
+  @@index([deletedAt])
+}
+
+model DiscussionReaction {
+  id        String       @id @default(uuid())
+  replyId   String       @map("reply_id")
+  studentId String       @map("student_id")
+  type      ReactionType
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  reply   DiscussionReply @relation(fields: [replyId], references: [id])
+  student Student         @relation(fields: [studentId], references: [id])
+
+  @@index([replyId])
+  @@index([studentId])
+  @@index([type])
+  @@index([deletedAt])
+}
+
+model DiscussionAttachment {
+  id        String    @id @default(uuid())
+  topicId   String    @map("topic_id")
+  fileUrl   String
+  fileName  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  topic DiscussionTopic @relation(fields: [topicId], references: [id])
+
+  @@index([topicId])
+  @@index([deletedAt])
+}
+
+// Certificate Management
+model CertificateTemplate {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  templateUrl String // URL to template file in Supabase Storage
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   String?   @map("created_by")
+  updatedBy   String?   @map("updated_by")
+
+  // Relations
+  certificates Certificate[]
+
+  @@index([name])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+model Certificate {
+  id                String    @id @default(uuid())
+  certificateNumber String    @unique
+  studentId         String    @map("student_id")
+  courseId          String?   @map("course_id")
+  examId            String?   @map("exam_id")
+  issuedAt          DateTime  @default(now())
+  expiresAt         DateTime?
+  issuedBy          String    @map("issued_by")
+  templateId        String    @map("template_id")
+  verificationCode  String    @unique
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  student          Student             @relation(fields: [studentId], references: [id])
+  course           Course?             @relation(fields: [courseId], references: [id])
+  exam             Exam?               @relation(fields: [examId], references: [id])
+  template         CertificateTemplate @relation(fields: [templateId], references: [id])
+  verificationLogs VerificationLog[]
+
+  // Auto-added to fix validation
+  examResult_certificate ExamResult[]
+
+  @@index([studentId])
+  @@index([courseId])
+  @@index([examId])
+  @@index([issuedAt])
+  @@index([verificationCode])
+  @@index([deletedAt])
+}
+
+model VerificationLog {
+  id            String    @id @default(uuid())
+  certificateId String    @map("certificate_id")
+  verifiedBy    String    @map("verified_by")
+  isValid       Boolean
+  verifiedAt    DateTime  @default(now())
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  // Relations
+  certificate    Certificate @relation(fields: [certificateId], references: [id])
+  verifiedByUser User        @relation(fields: [verifiedBy], references: [id])
+
+  @@index([certificateId])
+  @@index([verifiedAt])
+  @@index([deletedAt])
+}
+
+// Reporting System
+model ReportTemplate {
+  id            String     @id @default(uuid())
+  name          String
+  description   String?
+  reportType    ReportType
+  configuration Json // Parameters, filters, formatting
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+  createdBy     String?    @map("created_by")
+  updatedBy     String?    @map("updated_by")
+
+  // Relations
+  generatedReports GeneratedReport[]
+
+  @@index([name])
+  @@index([reportType])
+  @@index([deletedAt])
+}
+
+model GeneratedReport {
+  id          String    @id @default(uuid())
+  templateId  String    @map("template_id")
+  parameters  Json // Input parameters used
+  fileUrl     String // URL to generated report in Supabase Storage
+  generatedAt DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  template ReportTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([templateId])
+  @@index([generatedAt])
+  @@index([deletedAt])
+}
+
+model AnalyticsCache {
+  id        String    @id @default(uuid())
+  cacheKey  String    @unique
+  data      Json
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([cacheKey])
+  @@index([expiresAt])
+}
+
+// Communication Platform
+model Message {
+  id          String      @id @default(uuid())
+  senderId    String      @map("sender_id")
+  recipientId String      @map("recipient_id")
+  content     String
+  type        MessageType
+  isRead      Boolean     @default(false)
+  readAt      DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  sender    User @relation("MessageSentByUser", fields: [senderId], references: [id])
+  recipient User @relation("MessageReceivedByUser", fields: [recipientId], references: [id])
+
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([type])
+  @@index([isRead])
+  @@index([deletedAt])
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String           @map("user_id")
+  title       String
+  body        String?
+  type        NotificationType
+  relatedId   String? // ID of related entity (e.g., invoice_id, exam_id)
+  relatedType String? // Type of related entity (e.g., "invoice", "exam")
+  isRead      Boolean          @default(false)
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([deletedAt])
+}
+
+model CommunicationTemplate {
+  id        String       @id @default(uuid())
+  name      String       @unique
+  subject   String       @unique
+  body      String
+  type      TemplateType
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  deletedAt DateTime?
+  createdBy String?      @map("created_by")
+  updatedBy String?      @map("updated_by")
+
+  // Relations
+
+  @@index([name])
+  @@index([subject])
+  @@index([type])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+// Settings & Internationalization
+model SystemSetting {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  value       String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdBy   String?   @map("created_by")
+  updatedBy   String?   @map("updated_by")
+
+  // Relations
+
+  @@index([key])
+  @@index([deletedAt])
+}
+
+model Locale {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  name      String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  translations Translation[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+model Translation {
+  id        String    @id @default(uuid())
+  localeId  String    @map("locale_id")
+  key       String
+  value     String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+
+  // Relations
+  locale Locale @relation(fields: [localeId], references: [id])
+
+  @@unique([localeId, key])
+  @@index([localeId])
+  @@index([key])
+  @@index([deletedAt])
+}
+
+// Search & Discovery
+model SearchIndex {
+  id             String    @id @default(uuid())
+  entityType     String // e.g., "student", "course", "lesson"
+  entityId       String    @map("entity_id") // Note: This is a simplification - in reality we'd have separate tables or use polymorphic associations via JSON
+  searchableText String // Combined text for searching
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  // Relations
+
+  @@index([entityType, entityId])
+  @@index([searchableText])
+  @@index([deletedAt])
+}
+
+model SearchQueryLog {
+  id          String   @id @default(uuid())
+  queryText   String
+  resultCount Int
+  executedAt  DateTime @default(now())
+  userId      String?  @map("user_id")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([queryText])
+  @@index([executedAt])
+  @@index([userId])
+}
