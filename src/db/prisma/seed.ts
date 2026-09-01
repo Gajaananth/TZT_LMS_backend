@@ -348,6 +348,91 @@ async function main() {
   }
   console.log('Courses seeded.');
 
+  // Seed sample questions for testing
+  const questionCategory = await prisma.questionCategory.findFirst();
+  if (questionCategory) {
+    // Question 1: Multiple Choice
+    await prisma.question.upsert({
+      where: { id: 'q-mcq-1' },
+      create: {
+        id: 'q-mcq-1',
+        questionText: 'What is the capital of France?',
+        type: 'MULTIPLE_CHOICE',
+        points: 5,
+        categoryId: questionCategory.id,
+        difficulty: 'easy',
+        options: ['London', 'Berlin', 'Paris', 'Madrid'],
+        correctAnswer: '2',
+      },
+      update: {},
+    });
+
+    // Question 2: Multiple Select
+    await prisma.question.upsert({
+      where: { id: 'q-mcs-1' },
+      create: {
+        id: 'q-mcs-1',
+        questionText: 'Which of these are programming languages? (Select all that apply)',
+        type: 'MULTIPLE_SELECT',
+        points: 5,
+        categoryId: questionCategory.id,
+        difficulty: 'medium',
+        options: ['Python', 'HTML', 'JavaScript', 'CSS', 'Go'],
+        correctAnswer: JSON.stringify(['0', '2', '4']),
+      },
+      update: {},
+    });
+
+    // Question 3: True/False
+    await prisma.question.upsert({
+      where: { id: 'q-tf-1' },
+      create: {
+        id: 'q-tf-1',
+        questionText: 'The Earth is flat.',
+        type: 'TRUE_FALSE',
+        points: 3,
+        categoryId: questionCategory.id,
+        difficulty: 'easy',
+        options: ['True', 'False'],
+        correctAnswer: 'False',
+      },
+      update: {},
+    });
+
+    // Question 4: Dropdown
+    await prisma.question.upsert({
+      where: { id: 'q-dd-1' },
+      create: {
+        id: 'q-dd-1',
+        questionText: 'Which planet is known as the Red Planet?',
+        type: 'DROPDOWN',
+        points: 4,
+        categoryId: questionCategory.id,
+        difficulty: 'medium',
+        options: ['Venus', 'Mars', 'Jupiter', 'Saturn'],
+        correctAnswer: '1',
+      },
+      update: {},
+    });
+
+    // Question 5: Fill in Blank
+    await prisma.question.upsert({
+      where: { id: 'q-fib-1' },
+      create: {
+        id: 'q-fib-1',
+        questionText: 'The chemical symbol for Gold is ___.',
+        type: 'FILL_IN_BLANK',
+        points: 3,
+        categoryId: questionCategory.id,
+        difficulty: 'medium',
+        correctAnswer: JSON.stringify(['Au', 'au', 'GOLD', 'gold']),
+      },
+      update: {},
+    });
+
+    console.log('Sample questions seeded.');
+  }
+
   console.log('Seeding finished.');
 }
 

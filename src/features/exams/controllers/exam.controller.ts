@@ -122,6 +122,37 @@ export const getDetails = async (req: Request, res: Response) => {
   }
 };
 
+// Create a new exam
+export const createExam = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id || 'system';
+    const { title, description, courseId, startDate, endDate, durationMinutes, passingScore, randomizeQuestions, sections } = req.body;
+
+    if (!title || !courseId) {
+      return sendError(res, 'Missing required fields: title, courseId', 400);
+    }
+
+    const exam = await ExamService.createExam(
+      {
+        title,
+        description,
+        courseId,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        durationMinutes,
+        passingScore,
+        randomizeQuestions,
+        sections,
+      },
+      userId,
+    );
+
+    sendSuccess(res, { exam }, 'Exam created successfully', 201);
+  } catch (err: any) {
+    sendError(res, err?.message || 'Failed to create exam', 500);
+  }
+};
+
 export default {
   listExams,
   getExam,
@@ -132,4 +163,5 @@ export default {
   submit,
   getResults,
   getDetails,
+  createExam,
 };

@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import examCtrl from '../controllers/exam.controller';
-import { requireAuth } from '@/middleware/auth.middleware';
+import { requireAuth, requireRole } from '@/middleware/auth.middleware';
 
 const router = Router();
+
+// Create exam (Teacher/Admin/SuperAdmin only)
+router.post('/', requireAuth, requireRole(['Teacher', 'Admin', 'SuperAdmin']), examCtrl.createExam);
 
 // List all exams
 router.get('/', requireAuth, examCtrl.listExams);

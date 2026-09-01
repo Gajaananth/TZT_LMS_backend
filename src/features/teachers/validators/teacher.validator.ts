@@ -8,11 +8,18 @@ export const createTeacherSchema = z.object({
   specialization: z.string().optional(),
   dateOfJoining: z.string().datetime().optional(),
   salary: z.number().nonnegative().optional(),
+  // Photo validation is done in the controller, not here
+  photoFileName: z.string().optional(),
+  photoMimeType: z.string().optional(),
+  photoFileData: z.string().optional(),
 });
 
 export const updateTeacherSchema = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
+  photoFileName: z.string().optional(),
+  photoMimeType: z.string().optional(),
+  photoFileData: z.string().optional(),
   specialization: z.string().optional(),
   salary: z.number().nonnegative().optional(),
   isActive: z.boolean().optional(),

@@ -3,18 +3,45 @@ import { prisma } from '@/db/prisma/client';
 import { TeacherService } from '../services/teacher.service';
 import { sendError, sendSuccess } from '@/utils/api-response';
 import { supabaseAdmin } from '@/lib/supabase';
+import { uploadFile } from '@/lib/storage';
+import { validateFaceInImage } from '@/lib/face-detection';
 
 export class TeacherController {
   /**
    * POST /teachers - Create a new teacher
    * Only SuperAdmin, Admin can create teachers
+   * REQUIRED: Photo file with face detection
    */
   static async createTeacher(req: Request, res: Response, next: NextFunction) {
     try {
-      const { firstName, lastName, email, password, specialization, dateOfJoining, salary } = req.body;
+      const { firstName, lastName, email, password, specialization, dateOfJoining, salary, photoFileName, photoMimeType, photoFileData } = req.body;
 
       if (!firstName || !lastName || !email || !password) {
         return sendError(res, 'Missing required fields: firstName, lastName, email, password', 400);
+      }
+
+      // Photo is NOW REQUIRED
+      if (!photoFileName || !photoMimeType || !photoFileData) {
+        return sendError(res, 'Teacher photo is required during account creation. Please provide photoFileName, photoMimeType, and photoFileData (base64)', 400);
+      }
+
+      // Validate MIME type is JPEG or PNG
+      if (!['image/jpeg', 'image/png'].includes(photoMimeType)) {
+        return sendError(res, 'Only JPEG and PNG images are accepted for photos', 400);
+      }
+
+      // Convert base64 to Buffer
+      let photoBuffer: Buffer;
+      try {
+        photoBuffer = Buffer.from(photoFileData, 'base64');
+      } catch (error) {
+        return sendError(res, 'Invalid photo file data (must be valid base64)', 400);
+      }
+
+      // Validate face detection
+      const faceValidation = await validateFaceInImage(photoBuffer);
+      if (!faceValidation.hasFace) {
+        return sendError(res, `Photo validation failed: ${faceValidation.error || 'No face detected in image'}. Please provide a photo with a clear, visible face.`, 400);
       }
 
       // Create Supabase user
@@ -35,6 +62,17 @@ export class TeacherController {
         return sendError(res, 'Teacher role not found', 500);
       }
 
+      // Upload photo to Supabase storage
+      let photoUrl = '';
+      try {
+        const photoPath = `teachers/${supabaseUser.user.id}/${photoFileName}`;
+        const uploadResult = await uploadFile('avatars', photoPath, photoBuffer, photoMimeType);
+        photoUrl = uploadResult.publicUrl;
+      } catch (uploadError) {
+        console.error('Photo upload failed:', uploadError);
+        return sendError(res, 'Failed to upload teacher photo to storage', 500);
+      }
+
       // Create local user record
       const user = await prisma.user.create({
         data: {
@@ -51,11 +89,17 @@ export class TeacherController {
         },
       });
 
-      // Create teacher record
+      // Create teacher record with photo URL
       const teacher = await TeacherService.createTeacher(
         { firstName, lastName, email, password, specialization, dateOfJoining, salary },
         user.id,
       );
+
+      // Update teacher with photo URL
+      const teacherWithPhoto = await prisma.teacher.update({
+        where: { id: teacher.id },
+        data: { photoUrl: photoUrl },
+      });
 
       // Log audit
       await prisma.auditLog.create({
@@ -63,13 +107,13 @@ export class TeacherController {
           userId: req.user!.id,
           action: 'CREATE',
           tableName: 'Teacher',
-          recordId: teacher.id,
-          changes: { created: teacher },
+          recordId: teacherWithPhoto.id,
+          changes: { created: teacherWithPhoto },
           createdBy: req.user!.id,
         },
       });
 
-      return sendSuccess(res, teacher, 'Teacher created successfully', 201);
+      return sendSuccess(res, teacherWithPhoto, 'Teacher created successfully with photo validated', 201);
     } catch (error) {
       return next(error);
     }

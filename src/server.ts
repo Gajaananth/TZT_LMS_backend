@@ -19,6 +19,7 @@ import questionRoutes from './features/questions/routes/question.routes';
 import examRoutes from './features/exams/routes/exam.routes';
 import gradingRoutes from './features/grading/routes/grading.routes';
 import { errorMiddleware } from './middlewares/error.middleware';
+import { initializeStorageBuckets } from './lib/storage';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -71,6 +72,13 @@ if (process.env.NODE_ENV !== 'test') {
       console.log('Database connection established');
     } catch (error) {
       console.error('Failed to connect to database:', error);
+    }
+    // Initialize Supabase storage buckets
+    try {
+      await initializeStorageBuckets();
+      console.log('Storage buckets initialized');
+    } catch (error) {
+      console.warn('Failed to initialize storage buckets:', error);
     }
     // Start fee reminder job in non-test environments
     try {
