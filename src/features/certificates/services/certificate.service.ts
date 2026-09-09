@@ -99,7 +99,7 @@ export class CertificateService {
         include: {
           student: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
           course: { select: { id: true, title: true, code: true } },
-          exam: { select: { id: true, title: true, examType: true } },
+          exam: { select: { id: true, title: true } },
         },
       }),
     ]);

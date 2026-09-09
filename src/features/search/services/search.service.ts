@@ -28,7 +28,11 @@ export class SearchService {
       prisma.student.findMany({
         take: limit,
         skip: (page - 1) * limit,
-        include: { user: { select: { firstName: true, lastName: true, email: true } } },
+        include: {
+          user: { select: { firstName: true, lastName: true, email: true } },
+          batch: { select: { name: true } },
+          department: { select: { name: true } },
+        },
       }),
       prisma.teacher.findMany({
         take: limit,
@@ -55,7 +59,7 @@ export class SearchService {
       const matchName = name.toLowerCase().includes(normalized);
       const matchId = (s.studentId || '').toLowerCase().includes(normalized);
       const matchEmail = (s.user?.email || '').toLowerCase().includes(normalized);
-      const matchBatch = (s.batch || '').toLowerCase().includes(normalized);
+      const matchBatch = (s.batch?.name || '').toLowerCase().includes(normalized);
       const score = computeScore(matchName || matchId, matchEmail || matchBatch);
       if (!(matchName || matchId || matchEmail || matchBatch) && normalized) return;
       results.push({
@@ -63,7 +67,10 @@ export class SearchService {
         category: 'students',
         title: name,
         subtitle: s.studentId ? `Student ID: ${s.studentId}` : s.user?.email || null,
-        meta: [s.batch ? `Batch: ${s.batch}` : null, s.grade ? `Grade: ${s.grade}` : null, s.status ? `Status: ${s.status}` : null]
+        meta: [
+          s.batch?.name ? `Batch: ${s.batch.name}` : null,
+          s.isActive === false ? 'Inactive' : null,
+        ]
           .filter(Boolean)
           .join(' • ') || null,
         href: `/students/${s.id}`,
@@ -76,17 +83,15 @@ export class SearchService {
       const matchName = name.toLowerCase().includes(normalized);
       const matchEmpId = (t.employeeId || '').toLowerCase().includes(normalized);
       const matchEmail = (t.user?.email || '').toLowerCase().includes(normalized);
-      const matchDept = (t.department || '').toLowerCase().includes(normalized);
-      const score = computeScore(matchName || matchEmpId, matchEmail || matchDept);
-      if (!(matchName || matchEmpId || matchEmail || matchDept) && normalized) return;
+      const matchSpec = (t.specialization || '').toLowerCase().includes(normalized);
+      const score = computeScore(matchName || matchEmpId, matchEmail || matchSpec);
+      if (!(matchName || matchEmpId || matchEmail || matchSpec) && normalized) return;
       results.push({
         id: t.id,
         category: 'teachers',
         title: name,
         subtitle: t.user?.email ? `Email: ${t.user.email}` : t.employeeId ? `Employee ID: ${t.employeeId}` : null,
-        meta: [t.department ? `Dept: ${t.department}` : null, t.subjectSpecialization ? `Specialization: ${t.subjectSpecialization}` : null]
-          .filter(Boolean)
-          .join(' • ') || null,
+        meta: t.specialization ? `Specialization: ${t.specialization}` : null,
         href: `/teachers/${t.id}`,
         matchScore: score,
       });
@@ -103,7 +108,10 @@ export class SearchService {
         category: 'courses',
         title: c.code ? `${c.title} (${c.code})` : c.title || 'Untitled Course',
         subtitle: c.credits ? `${c.credits} Credits${c.durationWeeks ? ` • ${c.durationWeeks} Weeks` : ''}` : null,
-        meta: [c.status ? `Semester: ${c.status}` : null, c._count?.enrollments ? `Enrolled: ${c._count.enrollments}` : null, c.level ? `Level: ${c.level}` : null]
+        meta: [
+          c._count?.enrollments ? `Enrolled: ${c._count.enrollments}` : null,
+          c.difficultyLevel ? `Level: ${c.difficultyLevel}` : null,
+        ]
           .filter(Boolean)
           .join(' • ') || null,
         href: `/courses/${c.id}`,
@@ -113,20 +121,20 @@ export class SearchService {
 
     exams.forEach((e) => {
       const matchTitle = (e.title || '').toLowerCase().includes(normalized);
-      const matchType = (e.examType || '').toLowerCase().includes(normalized);
       const matchCourse = (e.course?.title || e.course?.code || '').toLowerCase().includes(normalized);
-      const score = computeScore(matchTitle || matchType, matchCourse);
-      if (!(matchTitle || matchType || matchCourse) && normalized) return;
+      const score = computeScore(matchTitle, matchCourse);
+      if (!(matchTitle || matchCourse) && normalized) return;
       const scheduleParts: string[] = [];
-      if (e.status) scheduleParts.push(`${e.status}`);
-      if (e.startTime) scheduleParts.push(`Scheduled: ${new Date(e.startTime).toLocaleDateString()}`);
+      if (e.startDate) scheduleParts.push(`Start: ${new Date(e.startDate).toLocaleDateString()}`);
       if (e.durationMinutes) scheduleParts.push(`Duration: ${e.durationMinutes} min`);
       results.push({
         id: e.id,
         category: 'exams',
         title: e.title || 'Untitled Exam',
-        subtitle: e.examType || e.course?.code ? [e.examType, e.course?.code].filter(Boolean).join(' • ') : null,
-        meta: [e.course?.title ? `Course: ${e.course.title}` : null, scheduleParts.join(' • ') || null].filter(Boolean).join(' • ') || null,
+        subtitle: e.course?.code || e.course?.title || null,
+        meta: [e.course?.title ? `Course: ${e.course.title}` : null, scheduleParts.join(' • ') || null]
+          .filter(Boolean)
+          .join(' • ') || null,
         href: `/exams/${e.id}`,
         matchScore: score,
       });

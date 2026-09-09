@@ -178,26 +178,24 @@ export class ReportService {
         const take = 5000;
         const dateFilter = parseDateFilters(opts);
         const baseWhere: any = isStudent ? { student: { userId } } : {};
-        const dateWhere: any = dateFilter ? { recordedAt: dateFilter } : {};
+        const dateWhere: any = dateFilter ? { attendanceDate: dateFilter } : {};
         const records = await prisma.attendanceRecord.findMany({
           take,
           include: {
             student: { include: { user: { select: { firstName: true, lastName: true } } } },
             course: { select: { title: true, code: true } },
-            markedBy: { include: { user: { select: { firstName: true, lastName: true } } } },
           },
-          orderBy: { recordedAt: 'desc' },
+          orderBy: { attendanceDate: 'desc' },
           where: { ...baseWhere, ...dateWhere },
         });
-        const headers = ['Date', 'Student ID', 'Student Name', 'Course', 'Status', 'Remarks', 'Marked By'];
+        const headers = ['Date', 'Student ID', 'Student Name', 'Course', 'Status', 'Remarks'];
         const rows = records.map((r: any) => [
-          r.recordedAt ? new Date(r.recordedAt).toLocaleDateString() : '',
+          r.attendanceDate ? new Date(r.attendanceDate).toLocaleDateString() : '',
           r.studentId,
           [r.student?.user?.firstName, r.student?.user?.lastName].filter(Boolean).join(' '),
           r.course?.code ? `${r.course.code} - ${r.course.title}` : r.course?.title || '',
           r.status || '',
           r.remarks || '',
-          [r.markedBy?.user?.firstName, r.markedBy?.user?.lastName].filter(Boolean).join(' ') || '',
         ]);
         return csvToArtifact('Attendance_Report', headers, rows);
       }
@@ -213,7 +211,7 @@ export class ReportService {
           take: 5000,
           include: {
             student: { include: { user: { select: { firstName: true, lastName: true } } } },
-            payments: { select: { amount: true, paymentMethod: true, paidAt: true } },
+            payments: { select: { amount: true, method: true, paymentDate: true } },
           },
           where: { ...baseWhere, ...dateWhere },
           orderBy: { dueDate: 'desc' },
@@ -231,7 +229,7 @@ export class ReportService {
             balance,
             inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : '',
             inv.status || '',
-            inv.payments?.[0]?.paidAt ? new Date(inv.payments[0].paidAt).toLocaleDateString() : '',
+            inv.payments?.[0]?.paymentDate ? new Date(inv.payments[0].paymentDate).toLocaleDateString() : '',
           ];
         });
         return csvToArtifact('Finance_Fees_Report', headers, rows);
@@ -244,7 +242,7 @@ export class ReportService {
           take: 1000,
           where: dateWhere,
           include: {
-            _count: { select: { enrollments: true, lessons: true, exams: true } },
+            _count: { select: { enrollments: true, exams: true } },
             teacherAssignment_course: {
               include: {
                 teacher: {
@@ -257,7 +255,7 @@ export class ReportService {
           },
           orderBy: { createdAt: 'desc' },
         });
-        const headers = ['Course Code', 'Title', 'Teacher', 'Credits', 'Enrolled', 'Lessons', 'Exams', 'Level', 'Status'];
+        const headers = ['Course Code', 'Title', 'Teacher', 'Credits', 'Enrolled', 'Exams', 'Difficulty'];
         const rows = courses.map((c: any) => [
           c.code || '',
           c.title || '',
@@ -266,10 +264,8 @@ export class ReportService {
             .join('; ') || '',
           c.credits || '',
           c._count.enrollments,
-          c._count.lessons,
           c._count.exams,
-          c.level || '',
-          c.status || '',
+          c.difficultyLevel || '',
         ]);
         return csvToArtifact('Academic_Course_Performance', headers, rows);
       }
@@ -283,21 +279,20 @@ export class ReportService {
           where: { ...baseWhere, ...dateWhere },
           include: {
             course: { select: { title: true, code: true } },
-            _count: { select: { questions: true, attempts: true } },
+            _count: { select: { examQuestions: true, attempts: true } },
           },
           orderBy: { createdAt: 'desc' },
         });
-        const headers = ['Exam Title', 'Type', 'Course', 'Questions', 'Attempts', 'Duration (min)', 'Passing Score', 'Status', 'Scheduled'];
+        const headers = ['Exam Title', 'Course', 'Questions', 'Attempts', 'Duration (min)', 'Passing Score', 'Start Date', 'End Date'];
         const rows = exams.map((e: any) => [
           e.title || '',
-          e.examType || '',
           e.course?.code ? `${e.course.code} - ${e.course.title}` : e.course?.title || '',
-          e._count.questions,
+          e._count.examQuestions,
           e._count.attempts,
           e.durationMinutes || '',
           e.passingScore || '',
-          e.status || '',
-          e.startTime ? new Date(e.startTime).toLocaleDateString() : '',
+          e.startDate ? new Date(e.startDate).toLocaleDateString() : '',
+          e.endDate ? new Date(e.endDate).toLocaleDateString() : '',
         ]);
         return csvToArtifact('Exams_and_Results', headers, rows);
       }

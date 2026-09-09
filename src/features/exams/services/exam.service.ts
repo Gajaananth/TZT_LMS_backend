@@ -343,12 +343,9 @@ export class ExamService {
         courseId: data.courseId,
         startDate: data.startDate,
         endDate: data.endDate,
-        startTime: data.startTime || data.startDate,
         durationMinutes: data.durationMinutes,
         passingScore: data.passingScore ? parseFloat(String(data.passingScore)) : 0,
         randomizeQuestions: data.randomizeQuestions ?? false,
-        examType: data.examType,
-        status: data.status || 'Draft',
         createdBy,
       },
     });
@@ -442,12 +439,9 @@ export class ExamService {
           courseId: data.courseId !== undefined ? data.courseId : undefined,
           startDate: data.startDate !== undefined ? data.startDate : undefined,
           endDate: data.endDate !== undefined ? data.endDate : undefined,
-          startTime: data.startTime !== undefined ? data.startTime : data.startDate !== undefined ? data.startDate : undefined,
           durationMinutes: data.durationMinutes !== undefined ? Number(data.durationMinutes) : undefined,
           passingScore: data.passingScore !== undefined ? parseFloat(String(data.passingScore)) : undefined,
           randomizeQuestions: data.randomizeQuestions !== undefined ? !!data.randomizeQuestions : undefined,
-          examType: data.examType !== undefined ? data.examType : undefined,
-          status: data.status !== undefined ? data.status : undefined,
         },
       });
 

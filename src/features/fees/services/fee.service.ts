@@ -463,7 +463,7 @@ export class FeeService {
     const invoices = await prisma.invoice.findMany({
       where: {
         studentId: { in: uniqueStudentIds },
-        status: { in: ['PENDING', 'OVERDUE', 'PARTIAL', 'PAID'] },
+        status: { in: ['PENDING', 'OVERDUE', 'PAID'] },
         deletedAt: null,
       },
       include: { payments: true },
