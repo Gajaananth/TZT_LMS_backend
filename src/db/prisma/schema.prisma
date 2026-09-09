@@ -647,6 +647,11 @@ model Teacher {
   teacherAssignments TeacherAssignment[]
   performanceReports PerformanceReport[]
 
+  // Auto-added to fix validation
+  discussionTopic_teacher    DiscussionTopic[]
+  discussionReply_teacher    DiscussionReply[]
+  discussionReaction_teacher DiscussionReaction[]
+
   @@index([employeeId])
   @@index([deletedAt])
 }
@@ -951,7 +956,7 @@ model Question {
   categoryId    String       @map("category_id")
   difficulty    String // e.g., "easy", "medium", "hard"
   tags          String? // Comma-separated tags or JSON array
-  correctAnswer String? // For objective types
+  correctAnswer Json?   // For objective types: scalar string/number or JSON array (multiple correct for MSQ/FIB)
   options       Json? // For MCQ/MSQ: array of options
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -1167,7 +1172,8 @@ model DiscussionTopic {
   content   String?
   courseId  String?   @map("course_id")
   lessonId  String?   @map("lesson_id")
-  studentId String    @map("student_id")
+  studentId String?   @map("student_id")
+  teacherId String?   @map("teacher_id")
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1177,11 +1183,13 @@ model DiscussionTopic {
   // Relations
   course      Course?                @relation(fields: [courseId], references: [id])
   lesson      Lesson?                @relation(fields: [lessonId], references: [id])
-  student     Student                @relation(fields: [studentId], references: [id])
+  student     Student?               @relation(fields: [studentId], references: [id])
+  teacher     Teacher?               @relation(fields: [teacherId], references: [id])
   replies     DiscussionReply[]
   attachments DiscussionAttachment[]
 
   @@index([studentId])
+  @@index([teacherId])
   @@index([courseId])
   @@index([lessonId])
   @@index([createdAt])
@@ -1192,7 +1200,8 @@ model DiscussionReply {
   id        String    @id @default(uuid())
   topicId   String    @map("topic_id")
   content   String?
-  studentId String    @map("student_id")
+  studentId String?   @map("student_id")
+  teacherId String?   @map("teacher_id")
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1201,18 +1210,21 @@ model DiscussionReply {
 
   // Relations
   topic     DiscussionTopic      @relation(fields: [topicId], references: [id])
-  student   Student              @relation(fields: [studentId], references: [id])
+  student   Student?             @relation(fields: [studentId], references: [id])
+  teacher   Teacher?             @relation(fields: [teacherId], references: [id])
   reactions DiscussionReaction[]
 
   @@index([topicId])
   @@index([studentId])
+  @@index([teacherId])
   @@index([deletedAt])
 }
 
 model DiscussionReaction {
   id        String       @id @default(uuid())
   replyId   String       @map("reply_id")
-  studentId String       @map("student_id")
+  studentId String?      @map("student_id")
+  teacherId String?      @map("teacher_id")
   type      ReactionType
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
@@ -1220,10 +1232,12 @@ model DiscussionReaction {
 
   // Relations
   reply   DiscussionReply @relation(fields: [replyId], references: [id])
-  student Student         @relation(fields: [studentId], references: [id])
+  student Student?        @relation(fields: [studentId], references: [id])
+  teacher Teacher?        @relation(fields: [teacherId], references: [id])
 
   @@index([replyId])
   @@index([studentId])
+  @@index([teacherId])
   @@index([type])
   @@index([deletedAt])
 }

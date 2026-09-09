@@ -6,6 +6,7 @@ const router = Router();
 
 // Create exam (Teacher/Admin/SuperAdmin only)
 router.post('/', requireAuth, requireRole(['Teacher', 'Admin', 'SuperAdmin']), examCtrl.createExam);
+router.put('/:examId', requireAuth, requireRole(['Teacher', 'Admin', 'SuperAdmin']), examCtrl.updateExam);
 
 // List all exams
 router.get('/', requireAuth, examCtrl.listExams);

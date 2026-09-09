@@ -18,6 +18,7 @@ import questionImportRoutes from './features/questions/routes/question.import.ro
 import questionRoutes from './features/questions/routes/question.routes';
 import examRoutes from './features/exams/routes/exam.routes';
 import gradingRoutes from './features/grading/routes/grading.routes';
+import settingsRoutes from './features/settings/routes/settings.routes';
 import { errorMiddleware } from './middlewares/error.middleware';
 import { initializeStorageBuckets } from './lib/storage';
 
@@ -50,6 +51,7 @@ app.use('/api/v1/questions', questionImportRoutes);
 app.use('/api/v1/questions', questionRoutes);
 app.use('/api/v1/exams', examRoutes);
 app.use('/api/v1/grading', gradingRoutes);
+app.use('/api/v1/settings', settingsRoutes);
 
 // Root route & Health check
 app.get('/', (req, res) => {

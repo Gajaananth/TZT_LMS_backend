@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getDetails = exports.getResults = exports.submit = exports.resume = exports.autosave = exports.startExam = exports.getExamQuestions = exports.getExam = exports.listExams = void 0;
+exports.createExam = exports.getDetails = exports.getResults = exports.submit = exports.resume = exports.autosave = exports.startExam = exports.getExamQuestions = exports.getExam = exports.listExams = void 0;
 const exam_service_1 = __importDefault(require("../services/exam.service"));
 const api_response_1 = require("../../../utils/api-response");
 // List all exams with optional filtering
@@ -134,6 +134,32 @@ const getDetails = async (req, res) => {
     }
 };
 exports.getDetails = getDetails;
+// Create a new exam
+const createExam = async (req, res) => {
+    try {
+        const userId = req.user?.id || 'system';
+        const { title, description, courseId, startDate, endDate, durationMinutes, passingScore, randomizeQuestions, sections } = req.body;
+        if (!title || !courseId) {
+            return (0, api_response_1.sendError)(res, 'Missing required fields: title, courseId', 400);
+        }
+        const exam = await exam_service_1.default.createExam({
+            title,
+            description,
+            courseId,
+            startDate: startDate ? new Date(startDate) : undefined,
+            endDate: endDate ? new Date(endDate) : undefined,
+            durationMinutes,
+            passingScore,
+            randomizeQuestions,
+            sections,
+        }, userId);
+        (0, api_response_1.sendSuccess)(res, { exam }, 'Exam created successfully', 201);
+    }
+    catch (err) {
+        (0, api_response_1.sendError)(res, err?.message || 'Failed to create exam', 500);
+    }
+};
+exports.createExam = createExam;
 exports.default = {
     listExams: exports.listExams,
     getExam: exports.getExam,
@@ -144,4 +170,5 @@ exports.default = {
     submit: exports.submit,
     getResults: exports.getResults,
     getDetails: exports.getDetails,
+    createExam: exports.createExam,
 };

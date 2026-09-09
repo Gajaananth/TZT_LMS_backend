@@ -65,4 +65,11 @@ router.get('/revenue', validate(revenueReportSchema, 'query'), FeeController.get
  */
 router.get('/pending', FeeController.getPendingPayments);
 
+/**
+ * GET /api/v1/fees/teacher/student-status - Teacher read-only view of student fee status
+ * (Must be before /:id style routes to avoid collision, which we currently don't have,
+ *  but keep it near the top of specific routes.)
+ */
+router.get('/teacher/student-status', FeeController.getTeacherStudentStatus);
+
 export default router;

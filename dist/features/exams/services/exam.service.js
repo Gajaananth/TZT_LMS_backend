@@ -273,6 +273,62 @@ class ExamService {
             details,
         };
     }
+    static async createExam(data, createdBy) {
+        // Create the exam
+        const exam = await client_1.prisma.exam.create({
+            data: {
+                title: data.title,
+                description: data.description,
+                courseId: data.courseId,
+                startDate: data.startDate,
+                endDate: data.endDate,
+                durationMinutes: data.durationMinutes,
+                passingScore: data.passingScore ? parseFloat(String(data.passingScore)) : 0,
+                randomizeQuestions: data.randomizeQuestions ?? false,
+                createdBy,
+            },
+        });
+        // If sections provided, create them with their questions
+        if (data.sections && data.sections.length > 0) {
+            for (const section of data.sections) {
+                const createdSection = await client_1.prisma.examSection.create({
+                    data: {
+                        examId: exam.id,
+                        title: section.title,
+                        description: section.description,
+                        sequenceNumber: section.sequenceNumber,
+                        createdBy,
+                    },
+                });
+                // Add questions to section
+                if (section.questions && section.questions.length > 0) {
+                    for (const q of section.questions) {
+                        await client_1.prisma.examQuestion.create({
+                            data: {
+                                examId: exam.id,
+                                sectionId: createdSection.id,
+                                questionId: q.questionId,
+                                points: q.points,
+                                sequenceNumber: q.sequenceNumber,
+                            },
+                        });
+                    }
+                }
+            }
+        }
+        else {
+            // Create a default "General" section if none provided
+            const defaultSection = await client_1.prisma.examSection.create({
+                data: {
+                    examId: exam.id,
+                    title: 'General',
+                    sequenceNumber: 1,
+                    createdBy,
+                },
+            });
+        }
+        return exam;
+    }
 }
 exports.ExamService = ExamService;
 exports.default = ExamService;

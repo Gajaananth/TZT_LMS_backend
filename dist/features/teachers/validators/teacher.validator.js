@@ -10,10 +10,17 @@ exports.createTeacherSchema = zod_1.z.object({
     specialization: zod_1.z.string().optional(),
     dateOfJoining: zod_1.z.string().datetime().optional(),
     salary: zod_1.z.number().nonnegative().optional(),
+    // Photo validation is done in the controller, not here
+    photoFileName: zod_1.z.string().optional(),
+    photoMimeType: zod_1.z.string().optional(),
+    photoFileData: zod_1.z.string().optional(),
 });
 exports.updateTeacherSchema = zod_1.z.object({
     firstName: zod_1.z.string().min(1).optional(),
     lastName: zod_1.z.string().min(1).optional(),
+    photoFileName: zod_1.z.string().optional(),
+    photoMimeType: zod_1.z.string().optional(),
+    photoFileData: zod_1.z.string().optional(),
     specialization: zod_1.z.string().optional(),
     salary: zod_1.z.number().nonnegative().optional(),
     isActive: zod_1.z.boolean().optional(),

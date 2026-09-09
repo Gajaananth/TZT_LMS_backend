@@ -3,6 +3,19 @@ import { sendError, sendSuccess } from '@/utils/api-response';
 import CertificateService from '../services/certificate.service';
 
 export class CertificateController {
+  static async list(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      if (!userId) return sendError(res, 'Authentication required', 401);
+      const page = Number(req.query.page || 1);
+      const limit = Number(req.query.limit || 50);
+      const data = await CertificateService.listCertificates(userId, { page, limit });
+      return sendSuccess(res, data);
+    } catch (err: any) {
+      return next(err);
+    }
+  }
+
   static async createTemplate(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user?.id || '';
@@ -46,3 +59,4 @@ export class CertificateController {
 }
 
 export default CertificateController;
+

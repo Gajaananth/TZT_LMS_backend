@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
+import { prisma } from '@/db/prisma/client';
 import { AttendanceService } from '../services/attendance.service';
 import { sendError, sendSuccess } from '@/utils/api-response';
 
@@ -125,6 +126,59 @@ export class AttendanceController {
       });
 
       return sendSuccess(res, summary, 'Attendance summary retrieved', 200);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  /**
+   * GET /attendance/options - Dropdown options used by the recording UI:
+   * lists batches, courses, and students for the authenticated user context.
+   */
+  static async getOptions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const [batches, courses, students] = await Promise.all([
+        prisma.batch.findMany({
+          where: { isActive: true, deletedAt: null },
+          select: { id: true, name: true, code: true },
+          orderBy: { name: 'asc' },
+          take: 200,
+        }),
+        prisma.course.findMany({
+          where: { deletedAt: null },
+          select: { id: true, title: true, code: true },
+          orderBy: { title: 'asc' },
+          take: 200,
+        }),
+        prisma.student.findMany({
+          where: { deletedAt: null },
+          include: {
+            user: { select: { firstName: true, lastName: true, email: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 500,
+        }),
+      ]);
+
+      return sendSuccess(
+        res,
+        {
+          batches: batches || [],
+          courses: courses || [],
+          students:
+            students?.map((s: any) => ({
+              id: s.id,
+              studentId: s.studentId,
+              name:
+                `${s.user?.firstName ?? ''} ${s.user?.lastName ?? ''}`.trim() ||
+                s.studentId ||
+                'Student',
+              email: s.user?.email || null,
+            })) || [],
+        },
+        'Attendance options retrieved',
+        200,
+      );
     } catch (error) {
       return next(error);
     }

@@ -38,16 +38,40 @@ const client_1 = require("../../../db/prisma/client");
 const teacher_service_1 = require("../services/teacher.service");
 const api_response_1 = require("../../../utils/api-response");
 const supabase_1 = require("../../../lib/supabase");
+const storage_1 = require("../../../lib/storage");
+const face_detection_1 = require("../../../lib/face-detection");
 class TeacherController {
     /**
      * POST /teachers - Create a new teacher
      * Only SuperAdmin, Admin can create teachers
+     * REQUIRED: Photo file with face detection
      */
     static async createTeacher(req, res, next) {
         try {
-            const { firstName, lastName, email, password, specialization, dateOfJoining, salary } = req.body;
+            const { firstName, lastName, email, password, specialization, dateOfJoining, salary, photoFileName, photoMimeType, photoFileData } = req.body;
             if (!firstName || !lastName || !email || !password) {
                 return (0, api_response_1.sendError)(res, 'Missing required fields: firstName, lastName, email, password', 400);
+            }
+            // Photo is NOW REQUIRED
+            if (!photoFileName || !photoMimeType || !photoFileData) {
+                return (0, api_response_1.sendError)(res, 'Teacher photo is required during account creation. Please provide photoFileName, photoMimeType, and photoFileData (base64)', 400);
+            }
+            // Validate MIME type is JPEG or PNG
+            if (!['image/jpeg', 'image/png'].includes(photoMimeType)) {
+                return (0, api_response_1.sendError)(res, 'Only JPEG and PNG images are accepted for photos', 400);
+            }
+            // Convert base64 to Buffer
+            let photoBuffer;
+            try {
+                photoBuffer = Buffer.from(photoFileData, 'base64');
+            }
+            catch (error) {
+                return (0, api_response_1.sendError)(res, 'Invalid photo file data (must be valid base64)', 400);
+            }
+            // Validate face detection
+            const faceValidation = await (0, face_detection_1.validateFaceInImage)(photoBuffer);
+            if (!faceValidation.hasFace) {
+                return (0, api_response_1.sendError)(res, `Photo validation failed: ${faceValidation.error || 'No face detected in image'}. Please provide a photo with a clear, visible face.`, 400);
             }
             // Create Supabase user
             const { data: supabaseUser, error: supabaseError } = await supabase_1.supabaseAdmin.auth.admin.createUser({
@@ -64,6 +88,17 @@ class TeacherController {
             if (!teacherRole) {
                 return (0, api_response_1.sendError)(res, 'Teacher role not found', 500);
             }
+            // Upload photo to Supabase storage
+            let photoUrl = '';
+            try {
+                const photoPath = `teachers/${supabaseUser.user.id}/${photoFileName}`;
+                const uploadResult = await (0, storage_1.uploadFile)('avatars', photoPath, photoBuffer, photoMimeType);
+                photoUrl = uploadResult.publicUrl;
+            }
+            catch (uploadError) {
+                console.error('Photo upload failed:', uploadError);
+                return (0, api_response_1.sendError)(res, 'Failed to upload teacher photo to storage', 500);
+            }
             // Create local user record
             const user = await client_1.prisma.user.create({
                 data: {
@@ -79,20 +114,25 @@ class TeacherController {
                     },
                 },
             });
-            // Create teacher record
+            // Create teacher record with photo URL
             const teacher = await teacher_service_1.TeacherService.createTeacher({ firstName, lastName, email, password, specialization, dateOfJoining, salary }, user.id);
+            // Update teacher with photo URL
+            const teacherWithPhoto = await client_1.prisma.teacher.update({
+                where: { id: teacher.id },
+                data: { photoUrl: photoUrl },
+            });
             // Log audit
             await client_1.prisma.auditLog.create({
                 data: {
                     userId: req.user.id,
                     action: 'CREATE',
                     tableName: 'Teacher',
-                    recordId: teacher.id,
-                    changes: { created: teacher },
+                    recordId: teacherWithPhoto.id,
+                    changes: { created: teacherWithPhoto },
                     createdBy: req.user.id,
                 },
             });
-            return (0, api_response_1.sendSuccess)(res, teacher, 'Teacher created successfully', 201);
+            return (0, api_response_1.sendSuccess)(res, teacherWithPhoto, 'Teacher created successfully with photo validated', 201);
         }
         catch (error) {
             return next(error);

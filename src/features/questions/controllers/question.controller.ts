@@ -1,5 +1,12 @@
 import { NextFunction, Request, Response } from 'express';
 import QuestionService from '../services/question.service';
+import { AppError } from '@/utils/app-error';
+
+const toValidationError = (err: unknown) => {
+  if (err instanceof AppError) return err;
+  const msg = err instanceof Error ? err.message : String(err);
+  return new AppError(msg, 400, 'QUESTION_VALIDATION_ERROR');
+};
 
 export const listQuestions = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -28,7 +35,7 @@ export const createQuestion = async (req: Request, res: Response, next: NextFunc
     const created = await QuestionService.createQuestion(req.body, userId);
     res.status(201).json(created);
   } catch (err) {
-    next(err);
+    next(toValidationError(err));
   }
 };
 
@@ -38,7 +45,7 @@ export const updateQuestion = async (req: Request, res: Response, next: NextFunc
     const updated = await QuestionService.updateQuestion(req.params.id, req.body, userId);
     res.json(updated);
   } catch (err) {
-    next(err);
+    next(toValidationError(err));
   }
 };
 
@@ -48,7 +55,7 @@ export const deleteQuestion = async (req: Request, res: Response, next: NextFunc
     const deleted = await QuestionService.deleteQuestion(req.params.id, userId);
     res.json(deleted);
   } catch (err) {
-    next(err);
+    next(err instanceof Error && /not found/i.test(err.message) ? toValidationError(err) : err);
   }
 };
 

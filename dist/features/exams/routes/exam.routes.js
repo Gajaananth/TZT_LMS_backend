@@ -7,6 +7,8 @@ const express_1 = require("express");
 const exam_controller_1 = __importDefault(require("../controllers/exam.controller"));
 const auth_middleware_1 = require("../../../middleware/auth.middleware");
 const router = (0, express_1.Router)();
+// Create exam (Teacher/Admin/SuperAdmin only)
+router.post('/', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireRole)(['Teacher', 'Admin', 'SuperAdmin']), exam_controller_1.default.createExam);
 // List all exams
 router.get('/', auth_middleware_1.requireAuth, exam_controller_1.default.listExams);
 // Get single exam with questions

@@ -8,7 +8,8 @@ import {
   passwordResetConfirm,
   sync,
   getMe,
-  deleteAccount
+  deleteAccount,
+  changePassword
 } from '../controllers/auth.controller';
 import { validate } from '../middleware/validate.middleware';
 import {
@@ -36,6 +37,7 @@ router.post('/sync', sync);
 
 // Protected endpoints
 router.get('/me', requireAuth, getMe);
+router.post('/change-password', requireAuth, changePassword);
 router.delete('/delete-account', requireAuth, deleteAccount);
 
 export default router;

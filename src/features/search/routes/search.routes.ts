@@ -6,6 +6,7 @@ const router = Router({ mergeParams: true });
 
 router.use(requireAuth);
 
+router.get('/', SearchController.global);
 router.get('/global', SearchController.global);
 
 export default router;

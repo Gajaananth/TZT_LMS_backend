@@ -126,7 +126,7 @@ export const getDetails = async (req: Request, res: Response) => {
 export const createExam = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id || 'system';
-    const { title, description, courseId, startDate, endDate, durationMinutes, passingScore, randomizeQuestions, sections } = req.body;
+    const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, status } = req.body;
 
     if (!title || !courseId) {
       return sendError(res, 'Missing required fields: title, courseId', 400);
@@ -139,10 +139,13 @@ export const createExam = async (req: Request, res: Response) => {
         courseId,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
+        startTime: startTime ? new Date(startTime) : undefined,
         durationMinutes,
         passingScore,
         randomizeQuestions,
         sections,
+        examType,
+        status,
       },
       userId,
     );
@@ -150,6 +153,43 @@ export const createExam = async (req: Request, res: Response) => {
     sendSuccess(res, { exam }, 'Exam created successfully', 201);
   } catch (err: any) {
     sendError(res, err?.message || 'Failed to create exam', 500);
+  }
+};
+
+// Update existing exam
+export const updateExam = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id || 'system';
+    const { examId } = req.params;
+    const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, status } = req.body;
+
+    if (!examId) {
+      return sendError(res, 'Missing examId', 400);
+    }
+
+    const exam = await ExamService.updateExam(
+      examId,
+      {
+        title,
+        description,
+        courseId,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        startTime: startTime ? new Date(startTime) : undefined,
+        durationMinutes,
+        passingScore,
+        randomizeQuestions,
+        sections,
+        examType,
+        status,
+      },
+      userId,
+    );
+
+    sendSuccess(res, { exam }, 'Exam updated successfully');
+  } catch (err: any) {
+    const statusCode = /permission/i.test(err.message) ? 403 : /not found/i.test(err.message) ? 404 : 500;
+    sendError(res, err?.message || 'Failed to update exam', statusCode);
   }
 };
 
@@ -164,4 +204,5 @@ export default {
   getResults,
   getDetails,
   createExam,
+  updateExam,
 };

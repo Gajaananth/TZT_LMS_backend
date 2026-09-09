@@ -254,3 +254,40 @@ export const getMe = async (req: Request, res: Response) => {
   // req.user is set by auth middleware
   return sendSuccess(res, { user: req.user }, 'Current user retrieved');
 };
+
+export const changePassword = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) return sendError(res, 'Unauthorized', 401);
+
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) {
+      return sendError(res, 'Both oldPassword and newPassword are required.', 400);
+    }
+    if (String(newPassword).length < 8) {
+      return sendError(res, 'New password must be at least 8 characters long.', 400);
+    }
+
+    const userEmail = (req as any).user?.email;
+    if (!userEmail) return sendError(res, 'User email missing from session.', 400);
+
+    const { error: signInError } = await supabaseAdmin.auth.signInWithPassword({
+      email: userEmail,
+      password: oldPassword,
+    });
+    if (signInError) {
+      return sendError(res, 'The current password you provided is incorrect.', 400);
+    }
+
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password: newPassword,
+    });
+    if (updateError) {
+      return sendError(res, updateError.message || 'Unable to update password at this time.', 400);
+    }
+
+    return sendSuccess(res, null, 'Password updated successfully.', 200);
+  } catch (error) {
+    return next(error);
+  }
+};

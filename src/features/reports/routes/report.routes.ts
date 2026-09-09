@@ -8,5 +8,6 @@ router.use(requireAuth);
 
 router.post('/generate', requireRole(['SuperAdmin', 'Admin']), ReportController.generate);
 router.get('/generated', requireRole(['SuperAdmin', 'Admin']), ReportController.list);
+router.get('/:type', ReportController.downloadByType);
 
 export default router;

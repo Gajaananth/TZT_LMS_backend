@@ -57,6 +57,7 @@ const question_routes_1 = __importDefault(require("./features/questions/routes/q
 const exam_routes_1 = __importDefault(require("./features/exams/routes/exam.routes"));
 const grading_routes_1 = __importDefault(require("./features/grading/routes/grading.routes"));
 const error_middleware_1 = require("./middlewares/error.middleware");
+const storage_1 = require("./lib/storage");
 // Load environment variables from .env file
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -102,6 +103,14 @@ if (process.env.NODE_ENV !== 'test') {
         }
         catch (error) {
             console.error('Failed to connect to database:', error);
+        }
+        // Initialize Supabase storage buckets
+        try {
+            await (0, storage_1.initializeStorageBuckets)();
+            console.log('Storage buckets initialized');
+        }
+        catch (error) {
+            console.warn('Failed to initialize storage buckets:', error);
         }
         // Start fee reminder job in non-test environments
         try {

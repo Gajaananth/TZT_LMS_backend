@@ -56,4 +56,10 @@ router.post('/correct', requireRole(['SuperAdmin', 'Admin']), validate(correctAt
  */
 router.get('/summary', validate(attendanceReportSchema, 'query'), AttendanceController.getAttendanceSummary);
 
+/**
+ * GET /api/v1/attendance/options - Returns dropdown options (batches, courses, students)
+ * for the UI recording form. This must come BEFORE wildcard routes like /student/:id.
+ */
+router.get('/options', AttendanceController.getOptions);
+
 export default router;
