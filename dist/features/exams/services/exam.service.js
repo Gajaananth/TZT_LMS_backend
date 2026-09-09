@@ -7,16 +7,34 @@ exports.ExamService = void 0;
 const client_1 = require("../../../db/prisma/client");
 const grading_service_1 = __importDefault(require("../../../features/grading/services/grading.service"));
 const normalizeQuestionType = (type) => {
-    const value = (type || '').toUpperCase();
-    if (value === 'MULTIPLE_CHOICE')
-        return 'MCQ';
-    if (value === 'TRUE_FALSE')
-        return 'True_False';
-    if (value === 'SHORT_ANSWER')
-        return 'Short_Answer';
-    if (value === 'ESSAY')
-        return 'Essay';
-    return type || 'Short_Answer';
+    const value = (type || '').toUpperCase().replace(/[-_]/g, '_');
+    switch (value) {
+        case 'MULTIPLE_CHOICE':
+        case 'MCQ':
+            return 'MCQ';
+        case 'MULTIPLE_SELECT':
+        case 'MSQ':
+        case 'MULTIPLESELECT':
+            return 'Multiple_Select';
+        case 'DROPDOWN':
+        case 'DROP_DOWN':
+            return 'Dropdown';
+        case 'TRUE_FALSE':
+        case 'TRUEFALSE':
+        case 'TF':
+            return 'True_False';
+        case 'FILL_IN_BLANK':
+        case 'FILLINBLANK':
+        case 'FIB':
+            return 'Fill_In_Blank';
+        case 'SHORT_ANSWER':
+        case 'SHORTANSWER':
+            return 'Short_Answer';
+        case 'ESSAY':
+            return 'Essay';
+        default:
+            return 'Short_Answer';
+    }
 };
 class ExamService {
     static async listExams(filters = {}) {
@@ -251,12 +269,13 @@ class ExamService {
         const details = attempt.responses.map((response) => ({
             questionId: response.questionId,
             questionText: response.question.questionText,
-            type: response.question.type,
+            type: normalizeQuestionType(response.question.type),
             points: response.question.points,
             options: response.question.options,
             selectedOptions: response.selectedOptions,
             answerText: response.answerText,
             correctAnswer: response.question.correctAnswer,
+            explanation: response.question.explanation ?? null,
             isCorrect: response.isCorrect,
             pointsEarned: response.pointsEarned,
         }));
@@ -274,7 +293,6 @@ class ExamService {
         };
     }
     static async createExam(data, createdBy) {
-        // Create the exam
         const exam = await client_1.prisma.exam.create({
             data: {
                 title: data.title,
@@ -288,7 +306,6 @@ class ExamService {
                 createdBy,
             },
         });
-        // If sections provided, create them with their questions
         if (data.sections && data.sections.length > 0) {
             for (const section of data.sections) {
                 const createdSection = await client_1.prisma.examSection.create({
@@ -300,7 +317,6 @@ class ExamService {
                         createdBy,
                     },
                 });
-                // Add questions to section
                 if (section.questions && section.questions.length > 0) {
                     for (const q of section.questions) {
                         await client_1.prisma.examQuestion.create({
@@ -317,7 +333,6 @@ class ExamService {
             }
         }
         else {
-            // Create a default "General" section if none provided
             const defaultSection = await client_1.prisma.examSection.create({
                 data: {
                     examId: exam.id,
@@ -328,6 +343,69 @@ class ExamService {
             });
         }
         return exam;
+    }
+    static async getUserRoleNames(userId) {
+        const u = await client_1.prisma.user.findUnique({
+            where: { id: userId },
+            include: { userRoles: { include: { role: true } } },
+        });
+        return u?.userRoles.map((ur) => ur.role.name) || [];
+    }
+    static async updateExam(examId, data, updatedBy) {
+        const existing = await client_1.prisma.exam.findUnique({ where: { id: examId } });
+        if (!existing)
+            throw new Error('Exam not found');
+        const roles = await this.getUserRoleNames(updatedBy);
+        const isAdmin = roles.some((r) => r === 'SuperAdmin' || r === 'Admin');
+        if (!isAdmin && existing.createdBy && existing.createdBy !== updatedBy) {
+            throw new Error('You do not have permission to update this exam');
+        }
+        return client_1.prisma.$transaction(async (tx) => {
+            const exam = await tx.exam.update({
+                where: { id: examId },
+                data: {
+                    title: data.title !== undefined ? data.title : undefined,
+                    description: data.description !== undefined ? data.description : undefined,
+                    courseId: data.courseId !== undefined ? data.courseId : undefined,
+                    startDate: data.startDate !== undefined ? data.startDate : undefined,
+                    endDate: data.endDate !== undefined ? data.endDate : undefined,
+                    durationMinutes: data.durationMinutes !== undefined ? Number(data.durationMinutes) : undefined,
+                    passingScore: data.passingScore !== undefined ? parseFloat(String(data.passingScore)) : undefined,
+                    randomizeQuestions: data.randomizeQuestions !== undefined ? !!data.randomizeQuestions : undefined,
+                },
+            });
+            if (data.sections && Array.isArray(data.sections)) {
+                await tx.examQuestion.deleteMany({ where: { examId } });
+                await tx.examSection.deleteMany({ where: { examId } });
+                if (data.sections.length > 0) {
+                    for (const section of data.sections) {
+                        const createdSection = await tx.examSection.create({
+                            data: {
+                                examId,
+                                title: section.title,
+                                description: section.description,
+                                sequenceNumber: Number(section.sequenceNumber || 1),
+                                createdBy: updatedBy,
+                            },
+                        });
+                        if (section.questions && section.questions.length > 0) {
+                            for (const q of section.questions) {
+                                await tx.examQuestion.create({
+                                    data: {
+                                        examId,
+                                        sectionId: createdSection.id,
+                                        questionId: q.questionId,
+                                        points: q.points,
+                                        sequenceNumber: Number(q.sequenceNumber || 1),
+                                    },
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            return exam;
+        });
     }
 }
 exports.ExamService = ExamService;

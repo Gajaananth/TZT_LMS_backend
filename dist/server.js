@@ -56,6 +56,8 @@ const question_import_routes_1 = __importDefault(require("./features/questions/r
 const question_routes_1 = __importDefault(require("./features/questions/routes/question.routes"));
 const exam_routes_1 = __importDefault(require("./features/exams/routes/exam.routes"));
 const grading_routes_1 = __importDefault(require("./features/grading/routes/grading.routes"));
+const settings_routes_1 = __importDefault(require("./features/settings/routes/settings.routes"));
+const messaging_routes_1 = __importDefault(require("./features/messaging/routes/messaging.routes"));
 const error_middleware_1 = require("./middlewares/error.middleware");
 const storage_1 = require("./lib/storage");
 // Load environment variables from .env file
@@ -84,6 +86,8 @@ app.use('/api/v1/questions', question_import_routes_1.default);
 app.use('/api/v1/questions', question_routes_1.default);
 app.use('/api/v1/exams', exam_routes_1.default);
 app.use('/api/v1/grading', grading_routes_1.default);
+app.use('/api/v1/settings', settings_routes_1.default);
+app.use('/api/v1/messaging', messaging_routes_1.default);
 // Root route & Health check
 app.get('/', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'TZT Education LMS Backend API is running', timestamp: new Date().toISOString() });

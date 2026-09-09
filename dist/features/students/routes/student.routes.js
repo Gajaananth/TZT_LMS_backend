@@ -11,23 +11,30 @@ const router = (0, express_1.Router)({ mergeParams: true });
 // All routes require authentication
 router.use(auth_middleware_1.requireAuth);
 /**
+ * GET /api/v1/students/me - Get currently logged-in student's own profile
+ */
+router.get('/me', (req, res, next) => {
+    req.params.id = 'me';
+    return student_controller_1.StudentController.getStudent(req, res, next);
+});
+/**
  * POST /api/v1/students - Create a new student
  * Body: { firstName, lastName, email, password, batchId, departmentId, ... }
  */
-router.post('/', (0, validate_middleware_1.validate)(student_validator_1.createStudentSchema), student_controller_1.StudentController.createStudent);
+router.post('/', (0, auth_middleware_1.requireRole)(['SuperAdmin', 'Admin']), (0, validate_middleware_1.validate)(student_validator_1.createStudentSchema), student_controller_1.StudentController.createStudent);
 /**
  * GET /api/v1/students - List students with pagination and filtering
- * Query: { page, limit, search, batchId, departmentId, isActive, sortBy, sortOrder }
+ * Restricted to Staff/Admins/Teachers: Students cannot view other students
  */
-router.get('/', (0, validate_middleware_1.validate)(student_validator_1.listStudentsSchema, 'query'), student_controller_1.StudentController.listStudents);
+router.get('/', (0, auth_middleware_1.requireRole)(['SuperAdmin', 'Admin', 'Teacher', 'Staff']), (0, validate_middleware_1.validate)(student_validator_1.listStudentsSchema, 'query'), student_controller_1.StudentController.listStudents);
 /**
  * POST /api/v1/students/import - Bulk import students from CSV
  */
-router.post('/import', rate_limit_1.bulkLimiter, (0, validate_middleware_1.validate)(student_validator_1.importStudentsSchema), student_controller_1.StudentController.importStudents);
+router.post('/import', (0, auth_middleware_1.requireRole)(['SuperAdmin', 'Admin']), rate_limit_1.bulkLimiter, (0, validate_middleware_1.validate)(student_validator_1.importStudentsSchema), student_controller_1.StudentController.importStudents);
 /**
  * GET /api/v1/students/export - Export students as CSV
  */
-router.get('/export', rate_limit_1.bulkLimiter, (0, validate_middleware_1.validate)(student_validator_1.listStudentsSchema, 'query'), student_controller_1.StudentController.exportStudents);
+router.get('/export', (0, auth_middleware_1.requireRole)(['SuperAdmin', 'Admin', 'Teacher', 'Staff']), rate_limit_1.bulkLimiter, (0, validate_middleware_1.validate)(student_validator_1.listStudentsSchema, 'query'), student_controller_1.StudentController.exportStudents);
 /**
  * POST /api/v1/students/:id/photo - Upload student photo
  */

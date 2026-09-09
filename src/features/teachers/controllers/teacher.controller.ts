@@ -120,10 +120,34 @@ export class TeacherController {
   }
 
   /**
+   * GET /teachers/directory - Public teacher directory (accessible to all, including students)
+   * Shows ONLY name, specialization, courses, and online status
+   */
+  static async getPublicDirectory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { search } = req.query;
+      const teachers = await TeacherService.getPublicDirectory(search as string | undefined);
+      return sendSuccess(res, teachers, 'Teacher public directory retrieved successfully', 200);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  /**
    * GET /teachers - List all teachers with pagination and filtering
+   * If requester is a Student, automatically returns the safe public directory
    */
   static async listTeachers(req: Request, res: Response, next: NextFunction) {
     try {
+      const userRoles = (req.user?.userRoles || []).map((ur: any) => ur.role?.name?.toLowerCase() || '');
+      const isStudent = userRoles.includes('student') && !userRoles.some((r: string) => ['superadmin', 'admin', 'teacher', 'staff'].includes(r));
+
+      if (isStudent) {
+        const { search } = req.query;
+        const teachers = await TeacherService.getPublicDirectory(search as string | undefined);
+        return sendSuccess(res, teachers, 'Teacher directory retrieved successfully', 200);
+      }
+
       const { page = '1', limit = '10', search, specialization, isActive, sortBy, sortOrder } = req.query;
 
       const result = await TeacherService.listTeachers({

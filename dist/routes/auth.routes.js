@@ -18,5 +18,6 @@ router.post('/password-reset-confirm', rate_limit_1.authLimiter, (0, validate_mi
 router.post('/sync', auth_controller_1.sync);
 // Protected endpoints
 router.get('/me', auth_middleware_1.requireAuth, auth_controller_1.getMe);
+router.post('/change-password', auth_middleware_1.requireAuth, auth_controller_1.changePassword);
 router.delete('/delete-account', auth_middleware_1.requireAuth, auth_controller_1.deleteAccount);
 exports.default = router;

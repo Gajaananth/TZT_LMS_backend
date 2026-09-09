@@ -364,5 +364,101 @@ class FeeService {
             daysOverdue: inv.dueDate ? Math.floor((new Date().getTime() - inv.dueDate.getTime()) / (1000 * 60 * 60 * 24)) : 0,
         }));
     }
+    /**
+     * Get student fee/class-package status for a teacher's assigned batches/courses
+     */
+    static async getTeacherStudentStatuses(teacherUserId) {
+        const teacher = await client_1.prisma.teacher.findFirst({
+            where: { userId: teacherUserId, deletedAt: null },
+            select: { id: true },
+        });
+        if (!teacher)
+            return [];
+        const assignments = await client_1.prisma.teacherAssignment.findMany({
+            where: { teacherId: teacher.id, deletedAt: null },
+            select: { batchId: true, courseId: true },
+        });
+        if (assignments.length === 0)
+            return [];
+        const byBatch = new Map();
+        for (const a of assignments) {
+            const set = byBatch.get(a.batchId) || new Set();
+            set.add(a.courseId);
+            byBatch.set(a.batchId, set);
+        }
+        const enrollments = await client_1.prisma.enrollment.findMany({
+            where: {
+                OR: Array.from(byBatch.entries()).flatMap(([batchId, courseSet]) => ({
+                    batchId,
+                    courseId: { in: Array.from(courseSet) },
+                })),
+                status: 'ACTIVE',
+                deletedAt: null,
+            },
+            include: {
+                student: {
+                    include: {
+                        user: true,
+                    },
+                },
+                batch: true,
+                course: true,
+            },
+            take: 500,
+            orderBy: { enrollmentDate: 'desc' },
+        });
+        const uniqueStudentIds = Array.from(new Set(enrollments.map((e) => e.studentId)));
+        const invoices = await client_1.prisma.invoice.findMany({
+            where: {
+                studentId: { in: uniqueStudentIds },
+                status: { in: ['PENDING', 'OVERDUE', 'PAID'] },
+                deletedAt: null,
+            },
+            include: { payments: true },
+        });
+        const latestByStudent = new Map();
+        for (const inv of invoices) {
+            const existing = latestByStudent.get(inv.studentId);
+            if (!existing || (inv.dueDate && existing.dueDate && inv.dueDate > existing.dueDate)) {
+                latestByStudent.set(inv.studentId, inv);
+            }
+        }
+        const now = new Date();
+        return enrollments
+            .filter((e) => e.student && e.student.user)
+            .map((e) => {
+            const inv = latestByStudent.get(e.studentId);
+            const paid = inv
+                ? inv.payments?.reduce((sum, p) => sum + Number(p.amount || 0), 0) || 0
+                : 0;
+            const totalAmount = inv ? Number(inv.totalAmount || 0) : 0;
+            const remaining = Math.max(0, totalAmount - paid);
+            let status = 'Cleared';
+            if (inv) {
+                if (inv.status === 'PAID')
+                    status = 'Cleared';
+                else if (remaining === 0)
+                    status = 'Cleared';
+                else if (inv.dueDate && now > inv.dueDate)
+                    status = 'Overdue';
+                else if (paid > 0)
+                    status = 'Partial';
+                else
+                    status = 'Pending';
+            }
+            return {
+                studentId: e.studentId,
+                studentName: `${e.student.user.firstName || ''} ${e.student.user.lastName || ''}`.trim() || 'Student',
+                studentNumber: e.student.studentId || e.studentId,
+                courseName: e.course?.title || undefined,
+                batchName: e.batch?.name || undefined,
+                balance: remaining,
+                status,
+                dueDate: inv?.dueDate ? new Date(inv.dueDate).toLocaleDateString('en-LK') : undefined,
+                classesRemaining: undefined,
+                feeType: inv?.feeStructure ? inv.feeStructure?.name : undefined,
+            };
+        });
+    }
 }
 exports.FeeService = FeeService;

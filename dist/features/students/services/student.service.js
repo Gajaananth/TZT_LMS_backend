@@ -175,6 +175,18 @@ class StudentService {
         return student;
     }
     /**
+     * Get single student details by user ID
+     */
+    static async getStudentByUserId(userId) {
+        const student = await client_1.prisma.student.findFirst({
+            where: { userId, deletedAt: null },
+            select: { id: true },
+        });
+        if (!student)
+            return null;
+        return this.getStudentById(student.id);
+    }
+    /**
      * Update student information
      */
     static async updateStudent(studentId, data, userId) {

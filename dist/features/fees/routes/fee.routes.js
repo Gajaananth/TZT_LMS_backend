@@ -48,4 +48,10 @@ router.get('/revenue', (0, validate_middleware_1.validate)(fee_validator_1.reven
  * GET /api/v1/fees/pending - Pending payments dashboard
  */
 router.get('/pending', fee_controller_1.FeeController.getPendingPayments);
+/**
+ * GET /api/v1/fees/teacher/student-status - Teacher read-only view of student fee status
+ * (Must be before /:id style routes to avoid collision, which we currently don't have,
+ *  but keep it near the top of specific routes.)
+ */
+router.get('/teacher/student-status', fee_controller_1.FeeController.getTeacherStudentStatus);
 exports.default = router;

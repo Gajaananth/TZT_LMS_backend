@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMe = exports.deleteAccount = exports.sync = exports.passwordResetConfirm = exports.passwordResetRequest = exports.refresh = exports.logout = exports.login = exports.register = void 0;
+exports.changePassword = exports.getMe = exports.deleteAccount = exports.sync = exports.passwordResetConfirm = exports.passwordResetRequest = exports.refresh = exports.logout = exports.login = exports.register = void 0;
 const supabase_1 = require("../lib/supabase");
 const auth_service_1 = require("../services/auth.service");
 const api_response_1 = require("../utils/api-response");
@@ -241,3 +241,38 @@ const getMe = async (req, res) => {
     return (0, api_response_1.sendSuccess)(res, { user: req.user }, 'Current user retrieved');
 };
 exports.getMe = getMe;
+const changePassword = async (req, res, next) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId)
+            return (0, api_response_1.sendError)(res, 'Unauthorized', 401);
+        const { oldPassword, newPassword } = req.body;
+        if (!oldPassword || !newPassword) {
+            return (0, api_response_1.sendError)(res, 'Both oldPassword and newPassword are required.', 400);
+        }
+        if (String(newPassword).length < 8) {
+            return (0, api_response_1.sendError)(res, 'New password must be at least 8 characters long.', 400);
+        }
+        const userEmail = req.user?.email;
+        if (!userEmail)
+            return (0, api_response_1.sendError)(res, 'User email missing from session.', 400);
+        const { error: signInError } = await supabase_1.supabaseAdmin.auth.signInWithPassword({
+            email: userEmail,
+            password: oldPassword,
+        });
+        if (signInError) {
+            return (0, api_response_1.sendError)(res, 'The current password you provided is incorrect.', 400);
+        }
+        const { error: updateError } = await supabase_1.supabaseAdmin.auth.admin.updateUserById(userId, {
+            password: newPassword,
+        });
+        if (updateError) {
+            return (0, api_response_1.sendError)(res, updateError.message || 'Unable to update password at this time.', 400);
+        }
+        return (0, api_response_1.sendSuccess)(res, null, 'Password updated successfully.', 200);
+    }
+    catch (error) {
+        return next(error);
+    }
+};
+exports.changePassword = changePassword;

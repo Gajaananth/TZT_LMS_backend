@@ -136,6 +136,77 @@ export class TeacherService {
   }
 
   /**
+   * Get public teacher directory (safe for student view)
+   * Shows only: name, specialization, avatar, courses providing, and online/offline status
+   */
+  static async getPublicDirectory(search?: string) {
+    const whereClause: any = {
+      deletedAt: null,
+      isActive: true,
+    };
+
+    if (search) {
+      whereClause.OR = [
+        { user: { firstName: { contains: search, mode: 'insensitive' } } },
+        { user: { lastName: { contains: search, mode: 'insensitive' } } },
+        { specialization: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const teachers = await prisma.teacher.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        userId: true,
+        specialization: true,
+        photoUrl: true,
+        lastSeenAt: true,
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            avatarUrl: true,
+          },
+        },
+        teacherAssignments: {
+          where: { deletedAt: null },
+          select: {
+            course: {
+              select: {
+                id: true,
+                title: true,
+                code: true,
+                difficultyLevel: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+    return (teachers as any[]).map((t: any) => {
+      const isOnline = t.lastSeenAt ? new Date(t.lastSeenAt) > fiveMinutesAgo : false;
+      const courses = (t.teacherAssignments || []).map((a: any) => a.course).filter(Boolean);
+      const uniqueCourses = Array.from(new Map(courses.map((c: any) => [c.id, c])).values());
+
+      return {
+        id: t.id,
+        userId: t.userId,
+        name: `${t.user?.firstName || ''} ${t.user?.lastName || ''}`.trim(),
+        avatarUrl: t.photoUrl || t.user?.avatarUrl,
+        specialization: t.specialization || 'General Instructor',
+        isOnline,
+        lastSeenAt: t.lastSeenAt,
+        courses: uniqueCourses,
+      };
+    });
+  }
+
+  /**
    * Update teacher information
    */
   static async updateTeacher(teacherId: string, data: UpdateTeacherInput, userId: string) {

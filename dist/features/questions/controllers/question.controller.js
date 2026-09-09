@@ -5,6 +5,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteQuestion = exports.updateQuestion = exports.createQuestion = exports.getQuestion = exports.listQuestions = void 0;
 const question_service_1 = __importDefault(require("../services/question.service"));
+const app_error_1 = require("../../../utils/app-error");
+const toValidationError = (err) => {
+    if (err instanceof app_error_1.AppError)
+        return err;
+    const msg = err instanceof Error ? err.message : String(err);
+    return new app_error_1.AppError(msg, 400, 'QUESTION_VALIDATION_ERROR');
+};
 const listQuestions = async (req, res, next) => {
     try {
         const page = Number(req.query.page || 1);
@@ -36,7 +43,7 @@ const createQuestion = async (req, res, next) => {
         res.status(201).json(created);
     }
     catch (err) {
-        next(err);
+        next(toValidationError(err));
     }
 };
 exports.createQuestion = createQuestion;
@@ -47,7 +54,7 @@ const updateQuestion = async (req, res, next) => {
         res.json(updated);
     }
     catch (err) {
-        next(err);
+        next(toValidationError(err));
     }
 };
 exports.updateQuestion = updateQuestion;
@@ -58,7 +65,7 @@ const deleteQuestion = async (req, res, next) => {
         res.json(deleted);
     }
     catch (err) {
-        next(err);
+        next(err instanceof Error && /not found/i.test(err.message) ? toValidationError(err) : err);
     }
 };
 exports.deleteQuestion = deleteQuestion;

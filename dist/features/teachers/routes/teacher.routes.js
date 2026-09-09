@@ -16,6 +16,11 @@ router.use(auth_middleware_1.requireAuth);
  */
 router.post('/', (0, validate_middleware_1.validate)(teacher_validator_1.createTeacherSchema), teacher_controller_1.TeacherController.createTeacher);
 /**
+ * GET /api/v1/teachers/directory - Public teacher directory
+ * Returns name, specialization, courses, and online status
+ */
+router.get('/directory', teacher_controller_1.TeacherController.getPublicDirectory);
+/**
  * GET /api/v1/teachers - List teachers with pagination and filtering
  * Query: { page, limit, search, specialization, isActive, sortBy, sortOrder }
  */

@@ -46,6 +46,14 @@ const requireAuth = async (req, res, next) => {
         }
         // Attach user to request
         req.user = userFromDb;
+        // Asynchronously track teacher online presence (lastSeenAt)
+        const isTeacher = userFromDb.userRoles.some(ur => ur.role.name.toLowerCase() === 'teacher');
+        if (isTeacher) {
+            client_1.default.teacher.updateMany({
+                where: { userId: userFromDb.id },
+                data: { lastSeenAt: new Date() }
+            }).catch(err => console.warn('Could not update teacher lastSeenAt:', err));
+        }
         next();
     }
     catch (error) {

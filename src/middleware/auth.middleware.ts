@@ -49,6 +49,16 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
 
     // Attach user to request
     req.user = userFromDb;
+
+    // Asynchronously track teacher online presence (lastSeenAt)
+    const isTeacher = userFromDb.userRoles.some(ur => ur.role.name.toLowerCase() === 'teacher');
+    if (isTeacher) {
+      prisma.teacher.updateMany({
+        where: { userId: userFromDb.id },
+        data: { lastSeenAt: new Date() }
+      }).catch(err => console.warn('Could not update teacher lastSeenAt:', err));
+    }
+
     next();
   } catch (error) {
     console.error('Auth Middleware Error:', error);

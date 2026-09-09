@@ -10,9 +10,32 @@ const normalizeReactionType = (type) => {
     }
     return client_2.$Enums.ReactionType.LIKE;
 };
+const resolveAuthor = async (userId) => {
+    const student = await client_1.prisma.student.findUnique({
+        where: { userId },
+        select: { id: true },
+    });
+    if (student)
+        return { studentId: student.id, teacherId: null };
+    const teacher = await client_1.prisma.teacher.findUnique({
+        where: { userId },
+        select: { id: true },
+    });
+    if (teacher)
+        return { studentId: null, teacherId: teacher.id };
+    throw new Error('User profile not found. Please complete onboarding before participating.');
+};
+const authorInclude = {
+    student: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
+    teacher: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
+};
 class DiscussionService {
     static async createTopic(data, userId) {
-        const topic = await client_1.prisma.discussionTopic.create({ data: { ...data, studentId: userId, createdBy: userId } });
+        const author = await resolveAuthor(userId);
+        const topic = await client_1.prisma.discussionTopic.create({
+            data: { ...data, ...author, createdBy: userId },
+            include: authorInclude,
+        });
         return topic;
     }
     static async listTopics(query = {}) {
@@ -23,15 +46,37 @@ class DiscussionService {
             where.courseId = courseId;
         if (lessonId)
             where.lessonId = lessonId;
-        const topics = await client_1.prisma.discussionTopic.findMany({ where, skip, take: limit, include: { replies: { orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } });
+        const topics = await client_1.prisma.discussionTopic.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                ...authorInclude,
+                replies: {
+                    orderBy: { createdAt: 'asc' },
+                    include: {
+                        ...authorInclude,
+                        reactions: true,
+                    },
+                },
+            },
+        });
         return topics;
     }
     static async replyToTopic(topicId, content, userId) {
-        const reply = await client_1.prisma.discussionReply.create({ data: { topicId, content, studentId: userId, createdBy: userId } });
+        const author = await resolveAuthor(userId);
+        const reply = await client_1.prisma.discussionReply.create({
+            data: { topicId, content, ...author, createdBy: userId },
+            include: { ...authorInclude, reactions: true },
+        });
         return reply;
     }
     static async reactToReply(replyId, type, userId) {
-        const reaction = await client_1.prisma.discussionReaction.create({ data: { replyId, type: normalizeReactionType(type), studentId: userId } });
+        const author = await resolveAuthor(userId);
+        const reaction = await client_1.prisma.discussionReaction.create({
+            data: { replyId, type: normalizeReactionType(type), ...author },
+        });
         return reaction;
     }
 }

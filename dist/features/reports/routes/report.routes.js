@@ -10,4 +10,5 @@ const router = (0, express_1.Router)({ mergeParams: true });
 router.use(auth_middleware_1.requireAuth);
 router.post('/generate', (0, auth_middleware_1.requireRole)(['SuperAdmin', 'Admin']), report_controller_1.default.generate);
 router.get('/generated', (0, auth_middleware_1.requireRole)(['SuperAdmin', 'Admin']), report_controller_1.default.list);
+router.get('/:type', report_controller_1.default.downloadByType);
 exports.default = router;

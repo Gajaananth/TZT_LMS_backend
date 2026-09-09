@@ -180,6 +180,18 @@ export class StudentService {
   }
 
   /**
+   * Get single student details by user ID
+   */
+  static async getStudentByUserId(userId: string) {
+    const student = await prisma.student.findFirst({
+      where: { userId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!student) return null;
+    return this.getStudentById(student.id);
+  }
+
+  /**
    * Update student information
    */
   static async updateStudent(studentId: string, data: UpdateStudentInput, userId: string) {

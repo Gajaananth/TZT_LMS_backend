@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttendanceController = void 0;
+const client_1 = require("../../../db/prisma/client");
 const attendance_service_1 = require("../services/attendance.service");
 const api_response_1 = require("../../../utils/api-response");
 class AttendanceController {
@@ -107,6 +108,51 @@ class AttendanceController {
                 reportType: reportType || 'summary',
             });
             return (0, api_response_1.sendSuccess)(res, summary, 'Attendance summary retrieved', 200);
+        }
+        catch (error) {
+            return next(error);
+        }
+    }
+    /**
+     * GET /attendance/options - Dropdown options used by the recording UI:
+     * lists batches, courses, and students for the authenticated user context.
+     */
+    static async getOptions(req, res, next) {
+        try {
+            const [batches, courses, students] = await Promise.all([
+                client_1.prisma.batch.findMany({
+                    where: { isActive: true, deletedAt: null },
+                    select: { id: true, name: true, code: true },
+                    orderBy: { name: 'asc' },
+                    take: 200,
+                }),
+                client_1.prisma.course.findMany({
+                    where: { deletedAt: null },
+                    select: { id: true, title: true, code: true },
+                    orderBy: { title: 'asc' },
+                    take: 200,
+                }),
+                client_1.prisma.student.findMany({
+                    where: { deletedAt: null },
+                    include: {
+                        user: { select: { firstName: true, lastName: true, email: true } },
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: 500,
+                }),
+            ]);
+            return (0, api_response_1.sendSuccess)(res, {
+                batches: batches || [],
+                courses: courses || [],
+                students: students?.map((s) => ({
+                    id: s.id,
+                    studentId: s.studentId,
+                    name: `${s.user?.firstName ?? ''} ${s.user?.lastName ?? ''}`.trim() ||
+                        s.studentId ||
+                        'Student',
+                    email: s.user?.email || null,
+                })) || [],
+            }, 'Attendance options retrieved', 200);
         }
         catch (error) {
             return next(error);

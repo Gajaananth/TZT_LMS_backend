@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createExam = exports.getDetails = exports.getResults = exports.submit = exports.resume = exports.autosave = exports.startExam = exports.getExamQuestions = exports.getExam = exports.listExams = void 0;
+exports.updateExam = exports.createExam = exports.getDetails = exports.getResults = exports.submit = exports.resume = exports.autosave = exports.startExam = exports.getExamQuestions = exports.getExam = exports.listExams = void 0;
 const exam_service_1 = __importDefault(require("../services/exam.service"));
 const api_response_1 = require("../../../utils/api-response");
 // List all exams with optional filtering
@@ -138,7 +138,7 @@ exports.getDetails = getDetails;
 const createExam = async (req, res) => {
     try {
         const userId = req.user?.id || 'system';
-        const { title, description, courseId, startDate, endDate, durationMinutes, passingScore, randomizeQuestions, sections } = req.body;
+        const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, status } = req.body;
         if (!title || !courseId) {
             return (0, api_response_1.sendError)(res, 'Missing required fields: title, courseId', 400);
         }
@@ -148,10 +148,13 @@ const createExam = async (req, res) => {
             courseId,
             startDate: startDate ? new Date(startDate) : undefined,
             endDate: endDate ? new Date(endDate) : undefined,
+            startTime: startTime ? new Date(startTime) : undefined,
             durationMinutes,
             passingScore,
             randomizeQuestions,
             sections,
+            examType,
+            status,
         }, userId);
         (0, api_response_1.sendSuccess)(res, { exam }, 'Exam created successfully', 201);
     }
@@ -160,6 +163,37 @@ const createExam = async (req, res) => {
     }
 };
 exports.createExam = createExam;
+// Update existing exam
+const updateExam = async (req, res) => {
+    try {
+        const userId = req.user?.id || 'system';
+        const { examId } = req.params;
+        const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, status } = req.body;
+        if (!examId) {
+            return (0, api_response_1.sendError)(res, 'Missing examId', 400);
+        }
+        const exam = await exam_service_1.default.updateExam(examId, {
+            title,
+            description,
+            courseId,
+            startDate: startDate ? new Date(startDate) : undefined,
+            endDate: endDate ? new Date(endDate) : undefined,
+            startTime: startTime ? new Date(startTime) : undefined,
+            durationMinutes,
+            passingScore,
+            randomizeQuestions,
+            sections,
+            examType,
+            status,
+        }, userId);
+        (0, api_response_1.sendSuccess)(res, { exam }, 'Exam updated successfully');
+    }
+    catch (err) {
+        const statusCode = /permission/i.test(err.message) ? 403 : /not found/i.test(err.message) ? 404 : 500;
+        (0, api_response_1.sendError)(res, err?.message || 'Failed to update exam', statusCode);
+    }
+};
+exports.updateExam = updateExam;
 exports.default = {
     listExams: exports.listExams,
     getExam: exports.getExam,
@@ -171,4 +205,5 @@ exports.default = {
     getResults: exports.getResults,
     getDetails: exports.getDetails,
     createExam: exports.createExam,
+    updateExam: exports.updateExam,
 };

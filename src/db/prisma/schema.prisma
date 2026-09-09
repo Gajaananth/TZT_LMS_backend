@@ -139,6 +139,9 @@ model User {
   verificationLog_verifiedByUser VerificationLog[]
   message_sender                 Message[]         @relation("MessageSentByUser")
   message_recipient              Message[]         @relation("MessageReceivedByUser")
+  directMessage_sender           DirectMessage[]   @relation("DirectMessageSender")
+  directMessage_recipient        DirectMessage[]   @relation("DirectMessageRecipient")
+  abuseFlagLogs                  AbuseFlagLog[]    @relation("AbuseFlagUser")
 
   @@index([email])
   @@index([deletedAt])
@@ -636,6 +639,7 @@ model Teacher {
   qrCodeVersion  Int       @default(1)
   idCardIssuedAt DateTime?
   isActive       Boolean   @default(true)
+  lastSeenAt     DateTime? // Updated on each auth'd request — used for online status
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
@@ -1407,6 +1411,48 @@ model Message {
   @@index([type])
   @@index([isRead])
   @@index([deletedAt])
+}
+
+// Direct Student-Teacher Messaging
+model DirectMessage {
+  id               String    @id @default(uuid())
+  senderId         String    @map("sender_id")
+  recipientId      String    @map("recipient_id")
+  content          String
+  isFiltered       Boolean   @default(false)   // true if content was blocked/sanitized
+  flaggedWords     String?                      // comma-separated matched bad words
+  messageContext   String    @default("pre_enrollment") // 'pre_enrollment' | 'enrolled'
+  isRead           Boolean   @default(false)
+  readAt           DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  // Relations
+  sender    User @relation("DirectMessageSender", fields: [senderId], references: [id])
+  recipient User @relation("DirectMessageRecipient", fields: [recipientId], references: [id])
+
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([isRead])
+  @@index([deletedAt])
+  @@index([senderId, recipientId])
+}
+
+// Abuse violation tracking
+model AbuseFlagLog {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  directMessageId  String?   @map("direct_message_id")
+  detectedWords    String    // comma-separated flagged words
+  notifiedOwnerAt  DateTime?
+  createdAt        DateTime  @default(now())
+
+  // Relations
+  user User @relation("AbuseFlagUser", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model Notification {

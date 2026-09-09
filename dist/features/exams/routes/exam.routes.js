@@ -9,6 +9,7 @@ const auth_middleware_1 = require("../../../middleware/auth.middleware");
 const router = (0, express_1.Router)();
 // Create exam (Teacher/Admin/SuperAdmin only)
 router.post('/', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireRole)(['Teacher', 'Admin', 'SuperAdmin']), exam_controller_1.default.createExam);
+router.put('/:examId', auth_middleware_1.requireAuth, (0, auth_middleware_1.requireRole)(['Teacher', 'Admin', 'SuperAdmin']), exam_controller_1.default.updateExam);
 // List all exams
 router.get('/', auth_middleware_1.requireAuth, exam_controller_1.default.listExams);
 // Get single exam with questions

@@ -135,5 +135,19 @@ class FeeController {
             return next(error);
         }
     }
+    /**
+     * GET /fees/teacher/student-status - Teacher view: list of students in their
+     * assigned batches/courses with fee status (read-only).
+     */
+    static async getTeacherStudentStatus(req, res, next) {
+        try {
+            const userId = req.user.id;
+            const students = await fee_service_1.FeeService.getTeacherStudentStatuses(userId);
+            return (0, api_response_1.sendSuccess)(res, { students }, 'Student fee status retrieved', 200);
+        }
+        catch (error) {
+            return next(error);
+        }
+    }
 }
 exports.FeeController = FeeController;

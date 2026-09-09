@@ -8,5 +8,6 @@ const search_controller_1 = __importDefault(require("../controllers/search.contr
 const auth_middleware_1 = require("../../../middleware/auth.middleware");
 const router = (0, express_1.Router)({ mergeParams: true });
 router.use(auth_middleware_1.requireAuth);
+router.get('/', search_controller_1.default.global);
 router.get('/global', search_controller_1.default.global);
 exports.default = router;

@@ -5,6 +5,19 @@ const client_1 = require("../../../db/prisma/client");
 const student_service_1 = require("../services/student.service");
 const api_response_1 = require("../../../utils/api-response");
 const supabase_1 = require("../../../lib/supabase");
+async function canAccessStudentRecord(reqUser, studentRecordId) {
+    if (!reqUser)
+        return false;
+    const roles = (reqUser.userRoles || []).map((ur) => ur.role?.name?.toLowerCase() || '');
+    if (roles.includes('superadmin') || roles.includes('admin') || roles.includes('teacher') || roles.includes('staff')) {
+        return true;
+    }
+    const student = await client_1.prisma.student.findFirst({
+        where: { id: studentRecordId, deletedAt: null },
+        select: { userId: true }
+    });
+    return !!student && student.userId === reqUser.id;
+}
 class StudentController {
     /**
      * POST /students - Register a new student
@@ -27,22 +40,24 @@ class StudentController {
                     lastName,
                 },
             });
-            if (supabaseError || !supabaseUser) {
-                return (0, api_response_1.sendError)(res, supabaseError?.message || 'Failed to create user', 400);
+            if (supabaseError || !supabaseUser?.user) {
+                return (0, api_response_1.sendError)(res, supabaseError?.message || 'Failed to create user in authentication system', 400);
             }
-            // Get student role ID
-            const studentRole = await client_1.prisma.role.findUnique({ where: { name: 'Student' } });
+            // Get student role
+            const studentRole = await client_1.prisma.role.findUnique({
+                where: { name: 'Student' },
+            });
             if (!studentRole) {
-                return (0, api_response_1.sendError)(res, 'Student role not found', 500);
+                return (0, api_response_1.sendError)(res, 'Student role not found in system', 500);
             }
-            // Create local user record
+            // Create user in our DB
             const user = await client_1.prisma.user.create({
                 data: {
                     supabaseUserId: supabaseUser.user.id,
                     email,
                     firstName,
                     lastName,
-                    passwordHash: '', // Not used with Supabase
+                    passwordHash: '',
                     userRoles: {
                         create: {
                             roleId: studentRole.id,
@@ -71,9 +86,15 @@ class StudentController {
     }
     /**
      * GET /students - List all students with pagination, search, and filtering
+     * Restricted: Students cannot view the student list
      */
     static async listStudents(req, res, next) {
         try {
+            const userRoles = (req.user?.userRoles || []).map((ur) => ur.role?.name?.toLowerCase() || '');
+            const isStaffOrAdmin = userRoles.some((r) => ['superadmin', 'admin', 'teacher', 'staff'].includes(r));
+            if (!isStaffOrAdmin) {
+                return (0, api_response_1.sendError)(res, 'Access denied: Students are not permitted to view other students or student directory', 403);
+            }
             const { page = '1', limit = '10', search, batchId, departmentId, isActive, sortBy, sortOrder } = req.query;
             const result = await student_service_1.StudentService.listStudents({
                 page: parseInt(page),
@@ -183,10 +204,22 @@ class StudentController {
     }
     /**
      * GET /students/:id - Get single student details
+     * Students can ONLY view their own profile
      */
     static async getStudent(req, res, next) {
         try {
             const { id } = req.params;
+            if (id === 'me') {
+                const student = await student_service_1.StudentService.getStudentByUserId(req.user.id);
+                if (!student) {
+                    return (0, api_response_1.sendError)(res, 'Student profile not found for current user', 404);
+                }
+                return (0, api_response_1.sendSuccess)(res, student, 'Student profile retrieved successfully', 200);
+            }
+            const hasAccess = await canAccessStudentRecord(req.user, id);
+            if (!hasAccess) {
+                return (0, api_response_1.sendError)(res, 'Access denied: Students can only view their own profile and details', 403);
+            }
             const student = await student_service_1.StudentService.getStudentById(id);
             if (!student) {
                 return (0, api_response_1.sendError)(res, 'Student not found', 404);
@@ -270,7 +303,19 @@ class StudentController {
      */
     static async getEnrollments(req, res, next) {
         try {
-            const { id } = req.params;
+            let { id } = req.params;
+            if (id === 'me') {
+                const student = await client_1.prisma.student.findFirst({ where: { userId: req.user.id, deletedAt: null }, select: { id: true } });
+                if (!student)
+                    return (0, api_response_1.sendError)(res, 'Student profile not found', 404);
+                id = student.id;
+            }
+            else {
+                const hasAccess = await canAccessStudentRecord(req.user, id);
+                if (!hasAccess) {
+                    return (0, api_response_1.sendError)(res, 'Access denied: You cannot view other students enrollments', 403);
+                }
+            }
             const enrollments = await student_service_1.StudentService.getStudentEnrollments(id);
             return (0, api_response_1.sendSuccess)(res, enrollments, 'Enrollments retrieved successfully', 200);
         }
@@ -283,8 +328,20 @@ class StudentController {
      */
     static async getAttendance(req, res, next) {
         try {
-            const { id } = req.params;
+            let { id } = req.params;
             const { courseId } = req.query;
+            if (id === 'me') {
+                const student = await client_1.prisma.student.findFirst({ where: { userId: req.user.id, deletedAt: null }, select: { id: true } });
+                if (!student)
+                    return (0, api_response_1.sendError)(res, 'Student profile not found', 404);
+                id = student.id;
+            }
+            else {
+                const hasAccess = await canAccessStudentRecord(req.user, id);
+                if (!hasAccess) {
+                    return (0, api_response_1.sendError)(res, 'Access denied: You cannot view other students attendance', 403);
+                }
+            }
             const attendance = await student_service_1.StudentService.getStudentAttendance(id, courseId);
             return (0, api_response_1.sendSuccess)(res, attendance, 'Attendance records retrieved successfully', 200);
         }

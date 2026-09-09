@@ -7,6 +7,20 @@ exports.CertificateController = void 0;
 const api_response_1 = require("../../../utils/api-response");
 const certificate_service_1 = __importDefault(require("../services/certificate.service"));
 class CertificateController {
+    static async list(req, res, next) {
+        try {
+            const userId = req.user?.id;
+            if (!userId)
+                return (0, api_response_1.sendError)(res, 'Authentication required', 401);
+            const page = Number(req.query.page || 1);
+            const limit = Number(req.query.limit || 50);
+            const data = await certificate_service_1.default.listCertificates(userId, { page, limit });
+            return (0, api_response_1.sendSuccess)(res, data);
+        }
+        catch (err) {
+            return next(err);
+        }
+    }
     static async createTemplate(req, res, next) {
         try {
             const userId = req.user?.id || '';
