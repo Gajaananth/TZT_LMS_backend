@@ -34,20 +34,68 @@ export class AuthService {
     });
   }
 
-  async syncSupabaseUser(supabaseUser: any, defaultRole: string = 'Student', specialization?: string) {
-    // This is called after a successful Supabase signup webhook or first login
+  /**
+   * Sync a Supabase Auth user into our Prisma database.
+   * 
+   * @param supabaseUser  The Supabase user object from auth response
+   * @param explicitRole  Only set during REGISTRATION — the role the user chose.
+   *                      During login this should be left undefined so existing roles are preserved.
+   * @param specialization  Optional teacher specialization (registration only)
+   */
+  async syncSupabaseUser(supabaseUser: any, explicitRole?: string, specialization?: string) {
+    // 1. Try to find user by supabaseUserId first, then by email
     let user = await this.getUserBySupabaseId(supabaseUser.id);
     
     if (!user) {
-      // Create user in Prisma
-      try {
-        user = await prisma.user.create({
-          data: {
-            supabaseUserId: supabaseUser.id,
-            email: supabaseUser.email,
-            firstName: supabaseUser.user_metadata?.first_name || '',
-            lastName: supabaseUser.user_metadata?.last_name || '',
-            passwordHash: '', // Not used since Supabase handles passwords
+      // Check by email — the user may exist but with a different/missing supabaseUserId
+      user = await prisma.user.findUnique({
+        where: { email: supabaseUser.email },
+        include: {
+          userRoles: { include: { role: true } },
+          student: true,
+          teacher: true,
+        }
+      }).catch(() => null);
+
+      // If found by email, update the supabaseUserId to keep them linked
+      if (user) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { supabaseUserId: supabaseUser.id }
+        }).catch(() => {});
+      }
+    }
+
+    // 2. If user exists, just return them (login flow) — preserve existing roles
+    if (user) {
+      return await this.getUserBySupabaseId(supabaseUser.id) || user;
+    }
+
+    // 3. User does NOT exist — create them (new registration or first-time login)
+    try {
+      user = await prisma.user.create({
+        data: {
+          supabaseUserId: supabaseUser.id,
+          email: supabaseUser.email,
+          firstName: supabaseUser.user_metadata?.first_name || '',
+          lastName: supabaseUser.user_metadata?.last_name || '',
+          passwordHash: '', // Not used since Supabase handles passwords
+        },
+        include: {
+          userRoles: { include: { role: true } },
+          student: true,
+          teacher: true,
+        }
+      });
+    } catch (err: any) {
+      // Handle potential unique constraint conflicts
+      if (err?.code === 'P2002' || err?.message?.includes('Unique')) {
+        user = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { supabaseUserId: supabaseUser.id },
+              { email: supabaseUser.email }
+            ]
           },
           include: {
             userRoles: { include: { role: true } },
@@ -55,57 +103,37 @@ export class AuthService {
             teacher: true,
           }
         });
-      } catch (err: any) {
-        // Handle potential unique constraint conflicts (email already exists)
-        if (err?.code === 'P2002' || err?.message?.includes('Unique')) {
-          user = await prisma.user.findUnique({
-            where: { email: supabaseUser.email },
-            include: {
-              userRoles: { include: { role: true } },
-              student: true,
-              teacher: true,
-            }
-          });
-        } else {
-          throw err;
-        }
+      } else {
+        throw err;
       }
+    }
 
-      if (!user) {
-        user = await prisma.user.findUnique({
-          where: { supabaseUserId: supabaseUser.id },
-          include: {
-            userRoles: { include: { role: true } },
-            student: true,
-            teacher: true,
-          }
-        });
-      }
+    if (!user) {
+      throw new Error(`Unable to locate synced user after Supabase signup for ${supabaseUser.email ?? supabaseUser.id}`);
+    }
 
-      if (!user) {
-        throw new Error(`Unable to locate synced user after Supabase signup for ${supabaseUser.email ?? supabaseUser.id}`);
-      }
-      
-      // Assign default role
-      let role = await prisma.role.findUnique({ where: { name: defaultRole } });
+    // 4. Only assign role if one was explicitly provided (registration)
+    //    During login (explicitRole is undefined), do NOT assign any default role.
+    const roleToAssign = explicitRole;
+    if (roleToAssign) {
+      let role = await prisma.role.findUnique({ where: { name: roleToAssign } });
       if (!role) {
-        role = await prisma.role.create({ data: { name: defaultRole, description: `${defaultRole} role` } });
+        role = await prisma.role.create({ data: { name: roleToAssign, description: `${roleToAssign} role` } });
       }
 
       if (role) {
-          const existingUserRole = await prisma.userRole.findUnique({ where: { userId_roleId: { userId: user.id, roleId: role.id } } }).catch(() => null);
-          if (!existingUserRole) {
-            await prisma.userRole.create({
-              data: {
-                userId: user.id,
-                roleId: role.id
-              }
-            });
-          }
+        const existingUserRole = await prisma.userRole.findUnique({
+          where: { userId_roleId: { userId: user.id, roleId: role.id } }
+        }).catch(() => null);
+        if (!existingUserRole) {
+          await prisma.userRole.create({
+            data: { userId: user.id, roleId: role.id }
+          });
+        }
       }
 
       // Auto-create Teacher profile if registering as a Teacher
-      if (defaultRole === 'Teacher') {
+      if (roleToAssign === 'Teacher') {
         const existingTeacher = await prisma.teacher.findUnique({ where: { userId: user.id } }).catch(() => null);
         if (!existingTeacher) {
           const employeeId = `TCH${String(Math.floor(100000 + Math.random() * 900000))}`;
@@ -124,10 +152,9 @@ export class AuthService {
       }
 
       // Auto-create Student profile if registering as a Student
-      if (defaultRole === 'Student') {
+      if (roleToAssign === 'Student') {
         const existingStudent = await prisma.student.findUnique({ where: { userId: user.id } }).catch(() => null);
         if (!existingStudent) {
-          // Get default department & batch
           let dept = await prisma.department.findFirst();
           if (!dept) {
             dept = await prisma.department.create({
