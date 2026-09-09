@@ -6,11 +6,14 @@ import { sendSuccess, sendError } from '@/utils/api-response';
 export const listExams = async (req: Request, res: Response) => {
   try {
     const { status, page, limit } = req.query;
-    const exams = await ExamService.listExams({
-      status: status as string | undefined,
-      page: page ? parseInt(page as string) : 1,
-      limit: limit ? parseInt(limit as string) : 50,
-    });
+    const exams = await ExamService.listExams(
+      {
+        status: status as string | undefined,
+        page: page ? parseInt(page as string) : 1,
+        limit: limit ? parseInt(limit as string) : 50,
+      },
+      (req as any).user,
+    );
     sendSuccess(res, { exams }, 'Exams retrieved successfully');
   } catch (err: any) {
     sendError(res, err?.message || 'Failed to retrieve exams', 500);
@@ -126,7 +129,7 @@ export const getDetails = async (req: Request, res: Response) => {
 export const createExam = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id || 'system';
-    const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, status } = req.body;
+    const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, maxAttempts, gradingStrategy, status } = req.body;
 
     if (!title || !courseId) {
       return sendError(res, 'Missing required fields: title, courseId', 400);
@@ -145,6 +148,8 @@ export const createExam = async (req: Request, res: Response) => {
         randomizeQuestions,
         sections,
         examType,
+        maxAttempts: maxAttempts !== undefined ? Number(maxAttempts) : undefined,
+        gradingStrategy,
         status,
       },
       userId,
@@ -161,7 +166,7 @@ export const updateExam = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id || 'system';
     const { examId } = req.params;
-    const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, status } = req.body;
+    const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, maxAttempts, gradingStrategy, status } = req.body;
 
     if (!examId) {
       return sendError(res, 'Missing examId', 400);
@@ -181,6 +186,8 @@ export const updateExam = async (req: Request, res: Response) => {
         randomizeQuestions,
         sections,
         examType,
+        maxAttempts: maxAttempts !== undefined ? Number(maxAttempts) : undefined,
+        gradingStrategy,
         status,
       },
       userId,

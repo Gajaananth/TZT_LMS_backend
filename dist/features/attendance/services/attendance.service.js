@@ -113,6 +113,11 @@ class AttendanceService {
         const { page = 1, limit = 50, batchId, courseId, moduleId, startDate, endDate, status, viewBy = 'date', } = query;
         const skip = (page - 1) * limit;
         const whereClause = { deletedAt: null };
+        if (query.studentId)
+            whereClause.studentId = query.studentId;
+        if (query.courseIds && Array.isArray(query.courseIds)) {
+            whereClause.courseId = { in: query.courseIds };
+        }
         if (batchId)
             whereClause.batchId = batchId;
         if (courseId)

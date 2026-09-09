@@ -37,29 +37,63 @@ const normalizeQuestionType = (type) => {
     }
 };
 class ExamService {
-    static async listExams(filters = {}) {
+    static async listExams(filters = {}, user) {
         const page = filters.page || 1;
         const limit = filters.limit || 50;
         const skip = (page - 1) * limit;
         const now = new Date();
+        const whereClause = { deletedAt: null };
+        // If teacher, filter to only courses assigned to the teacher
+        if (user?.id) {
+            const roles = user.userRoles?.map((ur) => ur.role?.name || ur) || [];
+            if (roles.includes('Teacher') && !roles.includes('Admin') && !roles.includes('SuperAdmin')) {
+                const teacher = await client_1.prisma.teacher.findUnique({
+                    where: { userId: user.id },
+                    include: { teacherAssignments: true },
+                });
+                if (teacher) {
+                    const assignedCourseIds = teacher.teacherAssignments.map(ta => ta.courseId);
+                    whereClause.courseId = { in: assignedCourseIds };
+                }
+            }
+        }
+        let studentAttempts = [];
+        if (user?.id) {
+            const student = await client_1.prisma.student.findUnique({ where: { userId: user.id } });
+            if (student) {
+                studentAttempts = await client_1.prisma.examAttempt.findMany({
+                    where: { studentId: student.id, deletedAt: null },
+                    select: { examId: true, score: true, status: true },
+                });
+            }
+        }
         const exams = await client_1.prisma.exam.findMany({
+            where: whereClause,
             skip,
             take: limit,
             include: {
                 examQuestions: { select: { id: true } },
+                course: { select: { id: true, title: true, code: true } },
             },
             orderBy: { startDate: 'desc' },
         });
-        // Calculate status for each exam
-        const results = exams.map((exam) => ({
-            ...exam,
-            status: now < new Date(exam.startDate ?? new Date())
-                ? 'Upcoming'
-                : now > new Date(exam.endDate ?? new Date())
-                    ? 'Closed'
-                    : 'Active',
-            questionCount: exam.examQuestions.length,
-        }));
+        // Calculate status and attempts for each exam
+        const results = exams.map((exam) => {
+            const myAttempts = studentAttempts.filter((a) => a.examId === exam.id);
+            const attemptsCount = myAttempts.length;
+            const bestScore = myAttempts.length > 0 ? Math.max(...myAttempts.map((a) => Number(a.score) || 0)) : null;
+            return {
+                ...exam,
+                status: now < new Date(exam.startDate ?? new Date())
+                    ? 'Upcoming'
+                    : now > new Date(exam.endDate ?? new Date())
+                        ? 'Closed'
+                        : 'Active',
+                questionCount: exam.examQuestions.length,
+                attemptsCount,
+                bestScore,
+            };
+        });
         return results;
     }
     static async getExam(examId) {
@@ -148,6 +182,9 @@ class ExamService {
         };
     }
     static async startAttempt(examId, userId) {
+        const exam = await client_1.prisma.exam.findUnique({ where: { id: examId } });
+        if (!exam)
+            throw new Error('Exam not found');
         let student = await client_1.prisma.student.findUnique({ where: { userId } });
         if (!student) {
             const department = await client_1.prisma.department.findFirst();
@@ -162,6 +199,21 @@ class ExamService {
                     isActive: true,
                 },
             });
+        }
+        // Check attempts limit
+        const pastAttempts = await client_1.prisma.examAttempt.count({
+            where: {
+                examId,
+                studentId: student.id,
+                deletedAt: null,
+            },
+        });
+        const isSummative = (exam.examType || '').toUpperCase() === 'SUMMATIVE';
+        const maxAllowed = isSummative ? 1 : (exam.maxAttempts || 1);
+        if (pastAttempts >= maxAllowed) {
+            throw new Error(isSummative
+                ? 'Summative exams allow only 1 attempt. You have already completed this exam.'
+                : `Maximum attempts (${maxAllowed}) reached for this formative exam.`);
         }
         const attempt = await client_1.prisma.examAttempt.create({
             data: {
@@ -219,12 +271,50 @@ class ExamService {
         const updated = await client_1.prisma.examAttempt.update({
             where: { id: attemptId },
             data: { status: 'submitted', submittedAt: new Date() },
+            include: { exam: true },
         });
         try {
             await grading_service_1.default.autoGradeAttempt(attemptId);
         }
         catch (err) {
             console.error('Auto-grading failed:', err);
+        }
+        // Recalculate score based on grading strategy across attempts
+        try {
+            if (updated.exam) {
+                const allAttempts = await client_1.prisma.examAttempt.findMany({
+                    where: {
+                        examId: updated.examId,
+                        studentId: updated.studentId,
+                        deletedAt: null,
+                        status: { in: ['submitted', 'graded', 'reviewed'] },
+                    },
+                    orderBy: { submittedAt: 'asc' },
+                });
+                const scores = allAttempts.map(a => Number(a.score) || 0);
+                let finalScore = scores[scores.length - 1] || 0;
+                if (updated.exam.gradingStrategy === 'HIGHEST') {
+                    finalScore = Math.max(...scores);
+                }
+                else if (updated.exam.gradingStrategy === 'AVERAGE') {
+                    finalScore = Math.round((scores.reduce((sum, s) => sum + s, 0) / (scores.length || 1)) * 10) / 10;
+                }
+                const passingScore = Number(updated.exam.passingScore) || 0;
+                const grade = finalScore >= passingScore ? 'Pass' : 'Fail';
+                await client_1.prisma.examResult.upsert({
+                    where: { attemptId: updated.id },
+                    create: {
+                        attemptId: updated.id,
+                        grade,
+                    },
+                    update: {
+                        grade,
+                    },
+                });
+            }
+        }
+        catch (calcErr) {
+            console.error('Grading strategy calculation failed:', calcErr);
         }
         return updated;
     }
@@ -293,6 +383,7 @@ class ExamService {
         };
     }
     static async createExam(data, createdBy) {
+        const isSummative = (data.examType || '').toUpperCase() === 'SUMMATIVE';
         const exam = await client_1.prisma.exam.create({
             data: {
                 title: data.title,
@@ -300,9 +391,12 @@ class ExamService {
                 courseId: data.courseId,
                 startDate: data.startDate,
                 endDate: data.endDate,
-                durationMinutes: data.durationMinutes,
+                durationMinutes: data.durationMinutes ? Number(data.durationMinutes) : 60,
                 passingScore: data.passingScore ? parseFloat(String(data.passingScore)) : 0,
                 randomizeQuestions: data.randomizeQuestions ?? false,
+                examType: isSummative ? 'SUMMATIVE' : 'FORMATIVE',
+                maxAttempts: isSummative ? 1 : Math.max(1, Number(data.maxAttempts) || 1),
+                gradingStrategy: isSummative ? 'HIGHEST' : (data.gradingStrategy || 'HIGHEST'),
                 createdBy,
             },
         });
@@ -360,6 +454,7 @@ class ExamService {
         if (!isAdmin && existing.createdBy && existing.createdBy !== updatedBy) {
             throw new Error('You do not have permission to update this exam');
         }
+        const isSummative = data.examType ? (data.examType || '').toUpperCase() === 'SUMMATIVE' : (existing.examType === 'SUMMATIVE');
         return client_1.prisma.$transaction(async (tx) => {
             const exam = await tx.exam.update({
                 where: { id: examId },
@@ -372,6 +467,9 @@ class ExamService {
                     durationMinutes: data.durationMinutes !== undefined ? Number(data.durationMinutes) : undefined,
                     passingScore: data.passingScore !== undefined ? parseFloat(String(data.passingScore)) : undefined,
                     randomizeQuestions: data.randomizeQuestions !== undefined ? !!data.randomizeQuestions : undefined,
+                    examType: data.examType ? (isSummative ? 'SUMMATIVE' : 'FORMATIVE') : undefined,
+                    maxAttempts: isSummative ? 1 : (data.maxAttempts !== undefined ? Math.max(1, Number(data.maxAttempts)) : undefined),
+                    gradingStrategy: data.gradingStrategy !== undefined ? data.gradingStrategy : undefined,
                 },
             });
             if (data.sections && Array.isArray(data.sections)) {

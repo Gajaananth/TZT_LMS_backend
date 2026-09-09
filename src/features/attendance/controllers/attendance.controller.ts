@@ -52,6 +52,24 @@ export class AttendanceController {
   static async getAttendance(req: Request, res: Response, next: NextFunction) {
     try {
       const { page, limit, batchId, courseId, moduleId, startDate, endDate, status, viewBy } = req.query;
+      const user = req.user;
+      const roles = user?.userRoles?.map((ur: any) => ur.role?.name || ur) || [];
+
+      let studentIdFilter: string | undefined = undefined;
+      let teacherCourseIds: string[] | undefined = undefined;
+
+      if (roles.includes('Student') && !roles.includes('Admin') && !roles.includes('SuperAdmin')) {
+        const student = await prisma.student.findUnique({ where: { userId: user!.id } });
+        studentIdFilter = student ? student.id : 'no-match';
+      } else if (roles.includes('Teacher') && !roles.includes('Admin') && !roles.includes('SuperAdmin')) {
+        const teacher = await prisma.teacher.findUnique({
+          where: { userId: user!.id },
+          include: { teacherAssignments: true },
+        });
+        if (teacher) {
+          teacherCourseIds = teacher.teacherAssignments.map(ta => ta.courseId);
+        }
+      }
 
       const result = await AttendanceService.getAttendanceRecords({
         page: page ? parseInt(page as string) : 1,
@@ -63,7 +81,9 @@ export class AttendanceController {
         endDate: endDate as string | undefined,
         status: status as any,
         viewBy: (viewBy as any) || 'date',
-      });
+        studentId: studentIdFilter,
+        courseIds: teacherCourseIds,
+      } as any);
 
       return sendSuccess(res, result, 'Attendance records retrieved', 200);
     } catch (error) {
@@ -137,6 +157,84 @@ export class AttendanceController {
    */
   static async getOptions(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = req.user;
+      const roles = user?.userRoles?.map((ur: any) => ur.role?.name || ur) || [];
+
+      if (roles.includes('Student') && !roles.includes('Admin') && !roles.includes('SuperAdmin')) {
+        return sendSuccess(res, { batches: [], courses: [], students: [] }, 'Attendance options retrieved', 200);
+      }
+
+      if (roles.includes('Teacher') && !roles.includes('Admin') && !roles.includes('SuperAdmin')) {
+        const teacher = await prisma.teacher.findUnique({
+          where: { userId: user!.id },
+          include: {
+            teacherAssignments: {
+              include: {
+                batch: { select: { id: true, name: true, code: true } },
+                course: { select: { id: true, title: true, code: true } },
+              },
+            },
+          },
+        });
+
+        if (!teacher) {
+          return sendSuccess(res, { batches: [], courses: [], students: [] }, 'Attendance options retrieved', 200);
+        }
+
+        const courseIds = teacher.teacherAssignments.map((ta: any) => ta.courseId);
+        const batchIds = teacher.teacherAssignments.map((ta: any) => ta.batchId);
+
+        const batchesMap = new Map<string, any>();
+        const coursesMap = new Map<string, any>();
+        for (const ta of teacher.teacherAssignments) {
+          if (ta.batch) batchesMap.set(ta.batch.id, ta.batch);
+          if (ta.course) coursesMap.set(ta.course.id, ta.course);
+        }
+
+        const enrollments = await prisma.enrollment.findMany({
+          where: {
+            deletedAt: null,
+            OR: [
+              { courseId: { in: courseIds } },
+              { batchId: { in: batchIds } },
+            ],
+          },
+          include: {
+            student: {
+              include: {
+                user: { select: { firstName: true, lastName: true, email: true } },
+              },
+            },
+          },
+        });
+
+        const studentsMap = new Map<string, any>();
+        for (const e of enrollments) {
+          if (e.student && !studentsMap.has(e.student.id)) {
+            studentsMap.set(e.student.id, {
+              id: e.student.id,
+              studentId: e.student.studentId,
+              name:
+                `${e.student.user?.firstName ?? ''} ${e.student.user?.lastName ?? ''}`.trim() ||
+                e.student.studentId ||
+                'Student',
+              email: e.student.user?.email || null,
+            });
+          }
+        }
+
+        return sendSuccess(
+          res,
+          {
+            batches: Array.from(batchesMap.values()),
+            courses: Array.from(coursesMap.values()),
+            students: Array.from(studentsMap.values()),
+          },
+          'Attendance options retrieved',
+          200,
+        );
+      }
+
       const [batches, courses, students] = await Promise.all([
         prisma.batch.findMany({
           where: { isActive: true, deletedAt: null },

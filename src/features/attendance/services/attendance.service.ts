@@ -142,6 +142,10 @@ export class AttendanceService {
 
     const whereClause: any = { deletedAt: null };
 
+    if ((query as any).studentId) whereClause.studentId = (query as any).studentId;
+    if ((query as any).courseIds && Array.isArray((query as any).courseIds)) {
+      whereClause.courseId = { in: (query as any).courseIds };
+    }
     if (batchId) whereClause.batchId = batchId;
     if (courseId) whereClause.courseId = courseId;
     if (moduleId) whereClause.moduleId = moduleId;

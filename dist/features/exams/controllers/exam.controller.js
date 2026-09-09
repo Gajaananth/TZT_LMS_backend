@@ -14,7 +14,7 @@ const listExams = async (req, res) => {
             status: status,
             page: page ? parseInt(page) : 1,
             limit: limit ? parseInt(limit) : 50,
-        });
+        }, req.user);
         (0, api_response_1.sendSuccess)(res, { exams }, 'Exams retrieved successfully');
     }
     catch (err) {
@@ -138,7 +138,7 @@ exports.getDetails = getDetails;
 const createExam = async (req, res) => {
     try {
         const userId = req.user?.id || 'system';
-        const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, status } = req.body;
+        const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, maxAttempts, gradingStrategy, status } = req.body;
         if (!title || !courseId) {
             return (0, api_response_1.sendError)(res, 'Missing required fields: title, courseId', 400);
         }
@@ -154,6 +154,8 @@ const createExam = async (req, res) => {
             randomizeQuestions,
             sections,
             examType,
+            maxAttempts: maxAttempts !== undefined ? Number(maxAttempts) : undefined,
+            gradingStrategy,
             status,
         }, userId);
         (0, api_response_1.sendSuccess)(res, { exam }, 'Exam created successfully', 201);
@@ -168,7 +170,7 @@ const updateExam = async (req, res) => {
     try {
         const userId = req.user?.id || 'system';
         const { examId } = req.params;
-        const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, status } = req.body;
+        const { title, description, courseId, startDate, endDate, startTime, durationMinutes, passingScore, randomizeQuestions, sections, examType, maxAttempts, gradingStrategy, status } = req.body;
         if (!examId) {
             return (0, api_response_1.sendError)(res, 'Missing examId', 400);
         }
@@ -184,6 +186,8 @@ const updateExam = async (req, res) => {
             randomizeQuestions,
             sections,
             examType,
+            maxAttempts: maxAttempts !== undefined ? Number(maxAttempts) : undefined,
+            gradingStrategy,
             status,
         }, userId);
         (0, api_response_1.sendSuccess)(res, { exam }, 'Exam updated successfully');

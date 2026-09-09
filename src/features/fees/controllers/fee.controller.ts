@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
+import { prisma } from '@/db/prisma/client';
 import { FeeService } from '../services/fee.service';
 import { sendError, sendSuccess } from '@/utils/api-response';
 
@@ -110,7 +111,15 @@ export class FeeController {
    */
   static async getPaymentHistory(req: Request, res: Response, next: NextFunction) {
     try {
-      const { studentId, batchId, status, page, limit } = req.query;
+      let { studentId, batchId, status, page, limit } = req.query;
+      const user = req.user;
+      const roles = user?.userRoles?.map((ur: any) => ur.role?.name || ur) || [];
+
+      // If student, strictly force studentId to their own
+      if (roles.includes('Student') && !roles.includes('Admin') && !roles.includes('SuperAdmin')) {
+        const student = await prisma.student.findUnique({ where: { userId: user!.id } });
+        studentId = student ? student.id : 'no-match';
+      }
 
       const result = await FeeService.getPaymentHistory({
         studentId: studentId as string | undefined,
@@ -121,6 +130,89 @@ export class FeeController {
       });
 
       return sendSuccess(res, result, 'Payment history retrieved', 200);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  /**
+   * GET /fees/student/me - Student self-view of their fee summary and invoices
+   */
+  static async getMyFeeStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id;
+      const student = await prisma.student.findUnique({
+        where: { userId },
+        include: {
+          enrollments: {
+            where: { deletedAt: null },
+            include: { course: true, batch: true },
+          },
+        },
+      });
+
+      if (!student) {
+        return sendSuccess(res, { balance: 0, status: 'Cleared', invoices: [], totalPaid: 0, totalAmount: 0 });
+      }
+
+      const invoices = await prisma.invoice.findMany({
+        where: { studentId: student.id, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          payments: { where: { deletedAt: null } },
+          feeStructure: true,
+        },
+      });
+
+      let totalAmount = 0;
+      let totalPaid = 0;
+
+      const formattedInvoices = invoices.map((inv: any) => {
+        const amount = Number(inv.totalAmount || inv.amount || 0);
+        const paid = inv.payments?.reduce((s: number, p: any) => s + Number(p.amount || 0), 0) || 0;
+        totalAmount += amount;
+        totalPaid += paid;
+        return {
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber || inv.id.slice(0, 8),
+          feeName: inv.feeStructure?.name || 'Course Fee',
+          amount,
+          paidAmount: paid,
+          remainingAmount: Math.max(0, amount - paid),
+          status: inv.status,
+          dueDate: inv.dueDate,
+          createdAt: inv.createdAt,
+          payments: inv.payments || [],
+        };
+      });
+
+      const balance = Math.max(0, totalAmount - totalPaid);
+      let status: 'Cleared' | 'Partial' | 'Pending' | 'Overdue' = 'Cleared';
+      const now = new Date();
+      if (balance === 0) {
+        status = 'Cleared';
+      } else if (invoices.some((i: any) => i.dueDate && new Date(i.dueDate) < now && i.status !== 'PAID')) {
+        status = 'Overdue';
+      } else if (totalPaid > 0) {
+        status = 'Partial';
+      } else {
+        status = 'Pending';
+      }
+
+      return sendSuccess(
+        res,
+        {
+          studentId: student.id,
+          studentName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim(),
+          balance,
+          status,
+          totalAmount,
+          totalPaid,
+          invoices: formattedInvoices,
+        },
+        'Student fee status retrieved',
+        200,
+      );
     } catch (error) {
       return next(error);
     }

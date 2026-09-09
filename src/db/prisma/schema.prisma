@@ -1034,6 +1034,9 @@ model Exam {
   isActive           Boolean   @default(true)
   randomizeQuestions Boolean   @default(false)
   passingScore       Decimal   @default(0)
+  examType           String    @default("FORMATIVE") @map("exam_type") // "FORMATIVE" | "SUMMATIVE"
+  maxAttempts        Int       @default(1) @map("max_attempts")
+  gradingStrategy    String    @default("HIGHEST") @map("grading_strategy") // "HIGHEST" | "LATEST" | "AVERAGE"
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   deletedAt          DateTime?
