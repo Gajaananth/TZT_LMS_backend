@@ -1,8 +1,12 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.changePassword = exports.getMe = exports.deleteAccount = exports.sync = exports.passwordResetConfirm = exports.passwordResetRequest = exports.refresh = exports.logout = exports.login = exports.register = void 0;
 const supabase_1 = require("../lib/supabase");
 const auth_service_1 = require("../services/auth.service");
+const client_1 = __importDefault(require("../db/prisma/client"));
 const api_response_1 = require("../utils/api-response");
 const updatePasswordForUser = async (userId, password) => {
     const { error } = await supabase_1.supabaseAdmin.auth.admin.updateUserById(userId, { password });
@@ -96,8 +100,36 @@ const login = async (req, res, next) => {
         if (error || !data.session) {
             return (0, api_response_1.sendError)(res, error?.message || 'Login failed', 401);
         }
-        // 2. Sync user to our database
-        const user = await auth_service_1.authService.syncSupabaseUser(data.user);
+        // 2. Sync user to our database with resilient fallback
+        let user = null;
+        try {
+            user = await auth_service_1.authService.syncSupabaseUser(data.user);
+        }
+        catch (syncErr) {
+            console.error('Login: error syncing Supabase user, attempting fallback read:', syncErr);
+            user = await client_1.default.user.findFirst({
+                where: {
+                    OR: [
+                        { supabaseUserId: data.user.id },
+                        { email: data.user.email }
+                    ]
+                },
+                include: {
+                    userRoles: { include: { role: true } },
+                    student: true,
+                    teacher: true,
+                }
+            }).catch(() => null);
+            if (!user) {
+                user = {
+                    id: data.user.id,
+                    email: data.user.email,
+                    firstName: data.user.user_metadata?.first_name || '',
+                    lastName: data.user.user_metadata?.last_name || '',
+                    userRoles: [{ role: { name: 'Student' } }],
+                };
+            }
+        }
         return (0, api_response_1.sendSuccess)(res, {
             user,
             session: {
@@ -109,6 +141,7 @@ const login = async (req, res, next) => {
         }, 'Login successful');
     }
     catch (error) {
+        console.error('Login unhandled error:', error);
         return next(error);
     }
 };

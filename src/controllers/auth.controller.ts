@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { supabaseAdmin } from '../lib/supabase';
 import { authService } from '../services/auth.service';
+import prisma from '../db/prisma/client';
 import { sendSuccess, sendError } from '../utils/api-response';
 
 const updatePasswordForUser = async (userId: string, password: string) => {
@@ -104,8 +105,36 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return sendError(res, error?.message || 'Login failed', 401);
     }
 
-    // 2. Sync user to our database
-    const user = await authService.syncSupabaseUser(data.user);
+    // 2. Sync user to our database with resilient fallback
+    let user: any = null;
+    try {
+      user = await authService.syncSupabaseUser(data.user);
+    } catch (syncErr) {
+      console.error('Login: error syncing Supabase user, attempting fallback read:', syncErr);
+      user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { supabaseUserId: data.user.id },
+            { email: data.user.email }
+          ]
+        },
+        include: {
+          userRoles: { include: { role: true } },
+          student: true,
+          teacher: true,
+        }
+      }).catch(() => null);
+
+      if (!user) {
+        user = {
+          id: data.user.id,
+          email: data.user.email,
+          firstName: data.user.user_metadata?.first_name || '',
+          lastName: data.user.user_metadata?.last_name || '',
+          userRoles: [{ role: { name: 'Student' } }],
+        };
+      }
+    }
 
     return sendSuccess(res, {
       user,
@@ -117,6 +146,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       }
     }, 'Login successful');
   } catch (error) {
+    console.error('Login unhandled error:', error);
     return next(error);
   }
 };
