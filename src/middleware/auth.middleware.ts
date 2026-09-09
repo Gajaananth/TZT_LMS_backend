@@ -20,7 +20,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     const supabaseUser = user;
 
     // Fetch the user from our Prisma DB using the Supabase user ID
-    const userFromDb = await prisma.user.findUnique({
+    let userFromDb = await prisma.user.findUnique({
       where: { supabaseUserId: supabaseUser.id },
       include: {
         userRoles: {
@@ -38,6 +38,35 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
         },
       },
     });
+
+    // Fallback: If not found by Supabase user ID, match by email and auto-heal supabaseUserId
+    if (!userFromDb && supabaseUser.email) {
+      userFromDb = await prisma.user.findUnique({
+        where: { email: supabaseUser.email },
+        include: {
+          userRoles: {
+            include: {
+              role: {
+                include: {
+                  rolePermissions: {
+                    include: {
+                      permission: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (userFromDb) {
+        await prisma.user.update({
+          where: { id: userFromDb.id },
+          data: { supabaseUserId: supabaseUser.id },
+        }).catch(() => {});
+      }
+    }
 
     if (!userFromDb) {
       return sendError(res, 'Unauthorized - User not found in database', 401);
