@@ -200,6 +200,46 @@ export const updateExam = async (req: Request, res: Response) => {
   }
 };
 
+// Execute student/teacher code against test cases
+export const runCode = async (req: Request, res: Response) => {
+  try {
+    const { code, language, testCases, questionId, onlyPublic } = req.body;
+    if (typeof code !== 'string') {
+      return sendError(res, 'Code string is required', 400);
+    }
+
+    let casesToRun = testCases;
+
+    if ((!casesToRun || casesToRun.length === 0) && questionId) {
+      const { prisma } = await import('@/db/prisma/client');
+      const q = await prisma.question.findUnique({ where: { id: questionId } });
+      if (q && q.options) {
+        let opts: any = q.options;
+        if (typeof opts === 'string') {
+          try {
+            opts = JSON.parse(opts);
+          } catch {
+            opts = {};
+          }
+        }
+        casesToRun = opts.testCases || [];
+      }
+    }
+
+    const { CodeExecutionService } = await import('../services/codeExecution.service');
+    const result = await CodeExecutionService.runTestCases(
+      code,
+      language || 'python',
+      Array.isArray(casesToRun) ? casesToRun : [],
+      { onlyPublic: onlyPublic !== false }
+    );
+
+    sendSuccess(res, result, 'Code execution completed');
+  } catch (err: any) {
+    sendError(res, err?.message || 'Code execution failed', 500);
+  }
+};
+
 export default {
   listExams,
   getExam,
@@ -212,4 +252,5 @@ export default {
   getDetails,
   createExam,
   updateExam,
+  runCode,
 };

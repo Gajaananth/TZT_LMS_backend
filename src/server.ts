@@ -1,7 +1,10 @@
+// Load environment variables FIRST — before any imports that read process.env
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import prisma from './db/prisma/client';
 import authRoutes from './routes/auth.routes';
 import studentRoutes from './features/students/routes/student.routes';
@@ -20,11 +23,8 @@ import examRoutes from './features/exams/routes/exam.routes';
 import gradingRoutes from './features/grading/routes/grading.routes';
 import settingsRoutes from './features/settings/routes/settings.routes';
 import messagingRoutes from './features/messaging/routes/messaging.routes';
-import { errorMiddleware } from './middlewares/error.middleware';
+import { errorMiddleware } from './middleware/error.middleware';
 import { initializeStorageBuckets } from './lib/storage';
-
-// Load environment variables from .env file
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -60,31 +60,35 @@ app.get('/', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'TZT Education LMS Backend API is running', timestamp: new Date().toISOString() });
 });
 
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({ status: 'OK', database: 'connected', timestamp: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: 'ERROR', database: 'disconnected', timestamp: new Date().toISOString() });
+  }
 });
 
 app.use(errorMiddleware);
 
 // Start the server when executed directly, not when imported by tests
 if (process.env.NODE_ENV !== 'test') {
-  const PORT_NUM = Number(port) || 5000;
-  app.listen(PORT_NUM, '0.0.0.0', async () => {
-    console.log(`Server is running on http://0.0.0.0:${PORT_NUM}`);
-    try {
-      await prisma.$connect();
-      console.log('Database connection established');
-    } catch (error) {
-      console.error('Failed to connect to database:', error);
-    }
-    // Initialize Supabase storage buckets
+  (async () => {
+    const PORT_NUM = Number(port) || 5000;
+
+    // Database MUST connect before accepting requests — fail loudly if it doesn't
+    await prisma.$connect();
+    console.log('Database connection established');
+
+    // Storage initialization is non-critical — warn but don't crash
     try {
       await initializeStorageBuckets();
       console.log('Storage buckets initialized');
     } catch (error) {
       console.warn('Failed to initialize storage buckets:', error);
     }
-    // Start fee reminder job in non-test environments
+
+    // Start background jobs
     try {
       const { startFeeReminderJob } = await import('./jobs/feeReminder.job');
       startFeeReminderJob();
@@ -92,6 +96,21 @@ if (process.env.NODE_ENV !== 'test') {
     } catch (e) {
       console.warn('Failed to start fee reminder job', e);
     }
+    try {
+      const { startExamReminderJob } = await import('./jobs/examReminder.job');
+      startExamReminderJob();
+      console.log('Exam reminder job started (24h and 1h alerts)');
+    } catch (e) {
+      console.warn('Failed to start exam reminder job', e);
+    }
+
+    // Only listen AFTER everything critical is ready
+    app.listen(PORT_NUM, '0.0.0.0', () => {
+      console.log(`Server is running on http://0.0.0.0:${PORT_NUM}`);
+    });
+  })().catch((err) => {
+    console.error('Fatal startup error:', err);
+    process.exit(1);
   });
 }
 

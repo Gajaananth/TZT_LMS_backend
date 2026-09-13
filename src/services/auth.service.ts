@@ -55,14 +55,14 @@ export class AuthService {
           student: true,
           teacher: true,
         }
-      }).catch(() => null);
+      }).catch((err) => { console.warn('Email lookup failed:', err.message); return null; });
 
       // If found by email, update the supabaseUserId to keep them linked
       if (user) {
         await prisma.user.update({
           where: { id: user.id },
           data: { supabaseUserId: supabaseUser.id }
-        }).catch(() => {});
+        }).catch((err) => console.warn('Failed to auto-heal supabaseUserId:', err.message));
       }
     }
 
@@ -124,7 +124,7 @@ export class AuthService {
       if (role) {
         const existingUserRole = await prisma.userRole.findUnique({
           where: { userId_roleId: { userId: user.id, roleId: role.id } }
-        }).catch(() => null);
+        }).catch((err) => { console.warn('UserRole lookup failed:', err.message); return null; });
         if (!existingUserRole) {
           await prisma.userRole.create({
             data: { userId: user.id, roleId: role.id }
@@ -134,7 +134,7 @@ export class AuthService {
 
       // Auto-create Teacher profile if registering as a Teacher
       if (roleToAssign === 'Teacher') {
-        const existingTeacher = await prisma.teacher.findUnique({ where: { userId: user.id } }).catch(() => null);
+        const existingTeacher = await prisma.teacher.findUnique({ where: { userId: user.id } }).catch((err) => { console.warn('Teacher lookup failed:', err.message); return null; });
         if (!existingTeacher) {
           const employeeId = `TCH${String(Math.floor(100000 + Math.random() * 900000))}`;
           const uniqueId = `TCH-${String(Math.floor(100000 + Math.random() * 900000))}`;
@@ -153,7 +153,7 @@ export class AuthService {
 
       // Auto-create Student profile if registering as a Student
       if (roleToAssign === 'Student') {
-        const existingStudent = await prisma.student.findUnique({ where: { userId: user.id } }).catch(() => null);
+        const existingStudent = await prisma.student.findUnique({ where: { userId: user.id } }).catch((err) => { console.warn('Student lookup failed:', err.message); return null; });
         if (!existingStudent) {
           let dept = await prisma.department.findFirst();
           if (!dept) {

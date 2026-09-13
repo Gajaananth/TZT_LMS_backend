@@ -142,6 +142,10 @@ model User {
   directMessage_sender           DirectMessage[]   @relation("DirectMessageSender")
   directMessage_recipient        DirectMessage[]   @relation("DirectMessageRecipient")
   abuseFlagLogs                  AbuseFlagLog[]    @relation("AbuseFlagUser")
+  teacherChatGroups              SubjectChatGroup[] @relation("TeacherChatGroups")
+  leaderChatGroups               SubjectChatGroup[] @relation("LeaderChatGroups")
+  chatGroupMemberships           ChatGroupMember[]  @relation("ChatGroupMemberships")
+  groupChatMessages              GroupChatMessage[] @relation("GroupChatMessages")
 
   @@index([email])
   @@index([deletedAt])
@@ -1456,6 +1460,74 @@ model AbuseFlagLog {
 
   @@index([userId])
   @@index([createdAt])
+}
+
+// Subject Study Groups
+model SubjectChatGroup {
+  id          String              @id @default(uuid())
+  name        String
+  subject     String
+  teacherId   String              @map("teacher_id")
+  leaderId    String?             @map("leader_id")
+  maxStudents Int                 @default(20) @map("max_students")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  deletedAt   DateTime?           @map("deleted_at")
+
+  teacher     User                @relation("TeacherChatGroups", fields: [teacherId], references: [id])
+  leader      User?               @relation("LeaderChatGroups", fields: [leaderId], references: [id])
+  members     ChatGroupMember[]
+  messages    GroupChatMessage[]
+
+  @@index([teacherId])
+  @@index([subject])
+  @@index([deletedAt])
+}
+
+model ChatGroupMember {
+  id          String           @id @default(uuid())
+  groupId     String           @map("group_id")
+  userId      String           @map("user_id")
+  role        String           @default("STUDENT") // 'TEACHER' | 'LEADER' | 'STUDENT'
+  isMuted     Boolean          @default(false) @map("is_muted")
+  mutedUntil  DateTime?        @map("muted_until")
+  mutedReason String?          @map("muted_reason")
+  joinedAt    DateTime         @default(now()) @map("joined_at")
+  leftAt      DateTime?        @map("left_at")
+
+  group       SubjectChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user        User             @relation("ChatGroupMemberships", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@index([isMuted])
+}
+
+model GroupChatMessage {
+  id             String           @id @default(uuid())
+  groupId        String           @map("group_id")
+  senderId       String           @map("sender_id")
+  content        String           @default("")
+  mediaType      String           @default("NONE") @map("media_type") // 'NONE' | 'VOICE_NOTE' | 'IMAGE' | 'ZIP' | 'DOCUMENT'
+  mediaMetadata  Json?            @map("media_metadata") // { fileName, fileSize, mimeType, duration, localFileId }
+  isDeleted      Boolean          @default(false) @map("is_deleted")
+  deletedBy      String?          @map("deleted_by")
+  deletedAt      DateTime?        @map("deleted_at")
+  isFlagged      Boolean          @default(false) @map("is_flagged")
+  flagReason     String?          @map("flag_reason")
+  flaggedBy      String?          @map("flagged_by")
+  flaggedAt      DateTime?        @map("flagged_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  group          SubjectChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender         User             @relation("GroupChatMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@index([isDeleted])
+  @@index([isFlagged])
 }
 
 model Notification {

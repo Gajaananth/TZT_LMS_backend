@@ -123,7 +123,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
           student: true,
           teacher: true,
         }
-      }).catch(() => null);
+      }).catch((err) => { console.warn('Sync user lookup failed:', err.message); return null; });
 
       if (!user) {
         user = {

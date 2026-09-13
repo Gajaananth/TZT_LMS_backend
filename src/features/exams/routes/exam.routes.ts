@@ -17,6 +17,9 @@ router.get('/:examId', requireAuth, examCtrl.getExam);
 // Get exam question set
 router.get('/:examId/questions', requireAuth, examCtrl.getExamQuestions);
 
+// Run code against test cases (accessible to authenticated users)
+router.post('/run-code', requireAuth, examCtrl.runCode);
+
 // Start exam attempt
 router.post('/start', requireAuth, examCtrl.startExam);
 

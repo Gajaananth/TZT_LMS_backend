@@ -27,6 +27,8 @@ const normalizeQuestionType = (type?: string) => {
       return 'Short_Answer';
     case 'ESSAY':
       return 'Essay';
+    case 'CODING':
+      return 'Coding';
     default:
       return 'Short_Answer';
   }

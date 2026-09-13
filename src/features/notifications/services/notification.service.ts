@@ -14,14 +14,12 @@ export class NotificationService {
       },
     });
 
-    // Broadcast via Supabase Realtime if available
+    // Broadcast via Supabase Realtime
     try {
-      if (typeof (supabaseAdmin as any)?.channel === 'function') {
-        const channel = (supabaseAdmin as any).channel(`notifications:${userId}`);
-        await channel.send({ type: 'broadcast', event: 'new_notification', payload: note });
-      }
-    } catch (e) {
-      console.warn('Realtime publish failed', e);
+      const channel = supabaseAdmin.channel(`notifications:${userId}`);
+      await channel.send({ type: 'broadcast', event: 'new_notification', payload: note });
+    } catch (e: any) {
+      console.warn(`Realtime notification broadcast failed for user ${userId}:`, e?.message || e);
     }
 
     return note;

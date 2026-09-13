@@ -1,5 +1,7 @@
 import { prisma } from '@/db/prisma/client';
 import { randomUUID } from 'crypto';
+import PDFDocument from 'pdfkit';
+import { uploadFile } from '@/lib/storage';
 
 export interface CertificateWithDetails {
   id: string;
@@ -138,7 +140,13 @@ export class CertificateService {
   }
 
   static async generateCertificate(attemptId: string, userId: string) {
-    const attempt = await prisma.examAttempt.findUnique({ where: { id: attemptId }, include: { exam: true, student: true } });
+    const attempt = await prisma.examAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        exam: { include: { course: true } },
+        student: { include: { user: true } },
+      },
+    });
     if (!attempt) throw new Error('Attempt not found');
 
     const defaultTemplate = await prisma.certificateTemplate.upsert({
@@ -168,12 +176,13 @@ export class CertificateService {
     });
 
     const verificationCode = randomUUID();
+    const certificateNumber = `CERT-${Date.now()}`;
 
     const cert = await prisma.certificate.create({
       data: {
-        certificateNumber: `CERT-${Date.now()}`,
+        certificateNumber,
         studentId: attempt.studentId,
-        courseId: attempt.exam.courseId,
+        courseId: attempt.exam?.courseId || null,
         examId: attempt.examId,
         issuedAt: new Date(),
         issuedBy: userId,
@@ -182,15 +191,93 @@ export class CertificateService {
       },
     });
 
-    const fileUrl = `https://storage.example.com/certificates/${cert.id}.pdf`;
+    // Generate real PDF with PDFKit and upload to Supabase storage
+    const studentName = [attempt.student?.user?.firstName, attempt.student?.user?.lastName].filter(Boolean).join(' ') || 'Student';
+    const courseTitle = attempt.exam?.course?.title || attempt.exam?.title || 'Academic Course';
+    const examTitle = attempt.exam?.title || 'Course Examination';
+
+    let fileUrl = `https://storage.example.com/certificates/${cert.id}.pdf`;
+    try {
+      const pdfBuffer = await CertificateService.createCertificatePdfBuffer({
+        studentName,
+        courseTitle,
+        examTitle,
+        certificateNumber,
+        verificationCode,
+        issueDate: cert.issuedAt || new Date(),
+      });
+
+      const uploadResult = await uploadFile('documents', `certificates/${cert.id}.pdf`, pdfBuffer, 'application/pdf');
+      fileUrl = uploadResult.publicUrl;
+    } catch (err: any) {
+      console.warn('PDF generation/upload failed, falling back to static URL:', err?.message || err);
+    }
 
     await prisma.generatedReport.create({
       data: { templateId: defaultReportTemplate.id, parameters: {}, fileUrl, generatedAt: new Date() },
-    }).catch(() => null);
+    }).catch((err) => { console.warn('Failed to create generated report record:', err.message); return null; });
 
-    await prisma.verificationLog.create({ data: { certificateId: cert.id, verifiedBy: userId, isValid: true, verifiedAt: new Date() } }).catch(() => null);
+    await prisma.verificationLog.create({ data: { certificateId: cert.id, verifiedBy: userId, isValid: true, verifiedAt: new Date() } }).catch((err) => { console.warn('Failed to create verification log:', err.message); return null; });
 
     return { cert, fileUrl };
+  }
+
+  static createCertificatePdfBuffer(data: {
+    studentName: string;
+    courseTitle: string;
+    examTitle: string;
+    certificateNumber: string;
+    verificationCode: string;
+    issueDate: Date;
+  }): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({
+        layout: 'landscape',
+        size: 'A4',
+        margin: 40,
+      });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const width = doc.page.width;
+      const height = doc.page.height;
+
+      // Outer & Inner Borders
+      doc.rect(20, 20, width - 40, height - 40).lineWidth(3).stroke('#1e3a8a');
+      doc.rect(26, 26, width - 52, height - 52).lineWidth(1).stroke('#3b82f6');
+
+      // Header
+      doc.moveDown(2.5);
+      doc.font('Helvetica-Bold').fontSize(30).fillColor('#1e3a8a').text('CERTIFICATE OF COMPLETION', { align: 'center' });
+      doc.moveDown(0.5);
+      doc.font('Helvetica').fontSize(14).fillColor('#64748b').text('This is proudly presented to', { align: 'center' });
+      doc.moveDown(1);
+
+      // Student Name
+      doc.font('Helvetica-Bold').fontSize(26).fillColor('#0f172a').text(data.studentName, { align: 'center' });
+      doc.moveDown(0.5);
+
+      // Body text
+      doc.font('Helvetica').fontSize(13).fillColor('#475569').text('for successfully completing all requirements for', { align: 'center' });
+      doc.moveDown(0.5);
+
+      // Course / Exam
+      doc.font('Helvetica-Bold').fontSize(20).fillColor('#2563eb').text(data.courseTitle, { align: 'center' });
+      if (data.examTitle && data.examTitle !== data.courseTitle) {
+        doc.font('Helvetica').fontSize(11).fillColor('#64748b').text(`Assessment: ${data.examTitle}`, { align: 'center' });
+      }
+
+      // Footer
+      const formattedDate = data.issueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      doc.font('Helvetica').fontSize(10).fillColor('#64748b');
+      doc.text(`Issue Date: ${formattedDate}`, 60, height - 90);
+      doc.text(`Certificate No: ${data.certificateNumber}`, 60, height - 72);
+      doc.text(`Verification Code: ${data.verificationCode}`, width - 340, height - 72, { align: 'right', width: 280 });
+
+      doc.end();
+    });
   }
 
   static async verifyCertificate(code: string) {

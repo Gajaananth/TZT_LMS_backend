@@ -64,7 +64,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
         await prisma.user.update({
           where: { id: userFromDb.id },
           data: { supabaseUserId: supabaseUser.id },
-        }).catch(() => {});
+        }).catch((err) => console.warn('Failed to auto-heal supabaseUserId in middleware:', err.message));
       }
     }
 

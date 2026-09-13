@@ -1,4 +1,5 @@
 import { prisma } from '@/db/prisma/client';
+import { CodeExecutionService } from '@/features/exams/services/codeExecution.service';
 
 const MANUAL_GRADING_TYPES = new Set([
   'ESSAY',
@@ -6,7 +7,6 @@ const MANUAL_GRADING_TYPES = new Set([
   'ORDERING',
   'IMAGE',
   'AUDIO',
-  'CODING',
 ]);
 
 const normalizeString = (value: any): string => {
@@ -168,9 +168,44 @@ export class GradingService {
 
       let correct = false;
       let manual = isManualType(typeRaw);
+      let customPointsEarned: number | null = null;
 
       if (!manual) {
         switch (typeRaw) {
+          case 'CODING': {
+            const rawOpts = question?.options;
+            let parsedOpts: any = rawOpts;
+            if (typeof rawOpts === 'string') {
+              try {
+                parsedOpts = JSON.parse(rawOpts);
+              } catch {
+                parsedOpts = {};
+              }
+            }
+            const language = parsedOpts?.language || 'python';
+            const testCases = Array.isArray(parsedOpts?.testCases) ? parsedOpts.testCases : [];
+            const studentCode = typeof response.answerText === 'string' ? response.answerText : '';
+
+            if (testCases.length > 0 && studentCode.trim().length > 0) {
+              try {
+                const execResult = await CodeExecutionService.runTestCases(studentCode, language, testCases);
+                correct = execResult.allPassed;
+                customPointsEarned = Math.round(execResult.scoreRatio * maxPoints * 100) / 100;
+                manual = false;
+              } catch (execErr) {
+                console.warn('Coding question auto-grading error:', execErr);
+                manual = true;
+              }
+            } else if (testCases.length > 0 && studentCode.trim().length === 0) {
+              correct = false;
+              customPointsEarned = 0;
+              manual = false;
+            } else {
+              // No test cases defined; flag for manual review
+              manual = true;
+            }
+            break;
+          }
           case 'MULTIPLE_CHOICE':
           case 'MCQ':
           case 'DROPDOWN':
@@ -275,8 +310,15 @@ export class GradingService {
 
       if (manual) hasManualGradingNeeded = true;
 
-      const pointsEarned = manual ? 0 : correct ? maxPoints : 0;
-      if (!manual && correct) earnedTotal += maxPoints;
+      const pointsEarned = manual
+        ? 0
+        : customPointsEarned !== null
+          ? customPointsEarned
+          : correct
+            ? maxPoints
+            : 0;
+
+      if (!manual) earnedTotal += pointsEarned;
 
       // Update response
       await prisma.examResponse.update({
