@@ -1,6 +1,7 @@
 import { prisma } from '@/db/prisma/client';
 import { randomUUID } from 'crypto';
-import PDFDocument from 'pdfkit';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const PDFDocument = require('pdfkit');
 import { uploadFile } from '@/lib/storage';
 
 export interface CertificateWithDetails {
@@ -237,7 +238,7 @@ export class CertificateService {
         margin: 40,
       });
       const chunks: Buffer[] = [];
-      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 

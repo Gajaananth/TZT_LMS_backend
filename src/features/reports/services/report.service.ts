@@ -1,5 +1,6 @@
 import { prisma } from '@/db/prisma/client';
-import PDFDocument from 'pdfkit';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const PDFDocument = require('pdfkit');
 import { uploadFile } from '@/lib/storage';
 
 export type ReportType = 'student' | 'attendance' | 'finance' | 'academic' | 'exam';
@@ -37,7 +38,7 @@ const buildPdfReport = (
       margin: 36,
     });
     const chunks: Buffer[] = [];
-    doc.on('data', (c) => chunks.push(c));
+    doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
